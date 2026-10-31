@@ -54,19 +54,22 @@ public class TrackpadView extends View {
     private long labelAt = -LABEL_MS, rippleAt = -RIPPLE_MS;
     private float rippleX, rippleY;
     private final RectF tmp = new RectF();
+    private final int accent, dragAccent; // RGB only; alpha is added when drawing
 
     public TrackpadView(Context c, AttributeSet a) {
         super(c, a);
         density = getResources().getDisplayMetrics().density;
         slopDp = android.view.ViewConfiguration.get(c).getScaledTouchSlop() / density;
+        accent = c.getColor(R.color.accent) & 0xFFFFFF;
+        dragAccent = c.getColor(R.color.green) & 0xFFFFFF;
         touchRing.setStyle(Paint.Style.STROKE);
         touchRing.setStrokeWidth(1.5f * density);
-        labelBg.setColor(0xF0262A33);
-        labelText.setColor(0xFFF2F3F5);
+        labelBg.setColor(c.getColor(R.color.label_bg));
+        labelText.setColor(c.getColor(R.color.label_text));
         labelText.setTextSize(14 * getResources().getDisplayMetrics().scaledDensity);
         labelText.setTextAlign(Paint.Align.CENTER);
         labelText.setFakeBoldText(true);
-        hintText.setColor(0xFF4A505B);
+        hintText.setColor(c.getColor(R.color.pad_hint));
         hintText.setTextSize(13 * getResources().getDisplayMetrics().scaledDensity);
         hintText.setTextAlign(Paint.Align.CENTER);
     }
@@ -355,13 +358,19 @@ public class TrackpadView extends View {
 
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         if (w <= 0 || h <= 0) return;
+        // Keep edge swipes on the pad from triggering the system Back gesture
+        // (Android honours up to 200dp of this per screen edge).
+        if (android.os.Build.VERSION.SDK_INT >= 29)
+            setSystemGestureExclusionRects(java.util.Collections.singletonList(new android.graphics.Rect(0, 0, w, h)));
+        Context ctx = getContext();
         surface = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(surface);
         float r = 28 * density, inset = density / 2;
         RectF rect = new RectF(inset, inset, w - inset, h - inset);
 
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-        fill.setShader(new LinearGradient(0, 0, 0, h, 0xFF1B1E25, 0xFF121419, Shader.TileMode.CLAMP));
+        fill.setShader(new LinearGradient(0, 0, 0, h, ctx.getColor(R.color.pad_top),
+                ctx.getColor(R.color.pad_bottom), Shader.TileMode.CLAMP));
         c.drawRoundRect(rect, r, r, fill);
 
         // Fine dot texture, like brushed glass.
@@ -370,7 +379,7 @@ public class TrackpadView extends View {
         c.save();
         c.clipPath(clip);
         Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
-        dot.setColor(0x0CFFFFFF);
+        dot.setColor(ctx.getColor(R.color.pad_dot));
         float step = 22 * density;
         for (float y = step / 2; y < h; y += step)
             for (float x = step / 2; x < w; x += step) c.drawCircle(x, y, 1.1f * density, dot);
@@ -379,7 +388,8 @@ public class TrackpadView extends View {
         Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
         border.setStyle(Paint.Style.STROKE);
         border.setStrokeWidth(density);
-        border.setShader(new LinearGradient(0, 0, 0, h, 0xFF3A3F4B, 0xFF1F232A, Shader.TileMode.CLAMP));
+        border.setShader(new LinearGradient(0, 0, 0, h, ctx.getColor(R.color.pad_border_top),
+                ctx.getColor(R.color.pad_border_bottom), Shader.TileMode.CLAMP));
         c.drawRoundRect(rect, r, r, border);
     }
 
@@ -393,9 +403,9 @@ public class TrackpadView extends View {
             canvas.drawText("Tap to click · two fingers to scroll", w / 2, h - 28 * density, hintText);
         }
 
-        int accent = mode == DRAG ? 0x30D158 : 0x4C8DFF;
-        touchFill.setColor(0x33000000 | accent);
-        touchRing.setColor(0xAA000000 | accent);
+        int rgb = mode == DRAG ? dragAccent : accent;
+        touchFill.setColor(0x33000000 | rgb);
+        touchRing.setColor(0xAA000000 | rgb);
         float tr = (mode == DRAG ? 30 : 26) * density;
         for (int i = 0; i < touchCount; i++) {
             canvas.drawCircle(tx[i], ty[i], tr, touchFill);
@@ -405,7 +415,7 @@ public class TrackpadView extends View {
         long rt = now - rippleAt;
         if (rt < RIPPLE_MS) {
             float t = rt / (float) RIPPLE_MS;
-            touchRing.setColor(((int) ((1 - t) * 200) << 24) | 0x4C8DFF);
+            touchRing.setColor(((int) ((1 - t) * 200) << 24) | accent);
             canvas.drawCircle(rippleX, rippleY, (16 + 34 * t) * density, touchRing);
             animating = true;
         }

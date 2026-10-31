@@ -1,17 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Light mode (dark mode overrides live in values-night) -->
 <resources>
-    <color name="bg">#FF0B0C0F</color>
-    <color name="surface">#FF15171C</color>
-    <color name="surface2">#FF1E2128</color>
-    <color name="stroke">#FF272B34</color>
-    <color name="text">#FFF2F3F5</color>
-    <color name="text2">#FF9097A3</color>
-    <color name="text3">#FF5B616C</color>
-    <color name="accent">#FF4C8DFF</color>
-    <color name="accent_dim">#FF2F4F8F</color>
-    <color name="green">#FF30D158</color>
-    <color name="amber">#FFFFB340</color>
-    <color name="red">#FFFF453A</color>
-    <color name="icon">#FFE6E8EC</color>
+    <color name="bg">#FFF2F3F6</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="surface2">#FFE9EBF0</color>
+    <color name="pressed">#FFE1E4EA</color>
+    <color name="stroke">#FFDDE0E6</color>
+    <color name="stroke_strong">#FFC9CDD5</color>
+    <color name="click_bg">#FFFFFFFF</color>
+    <color name="text">#FF111317</color>
+    <color name="text2">#FF5B6170</color>
+    <color name="text3">#FF8F95A1</color>
+    <color name="accent">#FF2F6FEB</color>
+    <color name="accent_pressed">#FF2559C2</color>
+    <color name="accent_dim">#FFD6E3FF</color>
+    <color name="green">#FF28B44A</color>
+    <color name="amber">#FFE09A1A</color>
+    <color name="red">#FFE5483F</color>
+    <color name="icon">#FF23262D</color>
+    <color name="scrim">#66000000</color>
+    <color name="pad_top">#FFFFFFFF</color>
+    <color name="pad_bottom">#FFF6F7F9</color>
+    <color name="pad_dot">#12000000</color>
+    <color name="pad_border_top">#FFD3D7DE</color>
+    <color name="pad_border_bottom">#FFE3E6EB</color>
+    <color name="pad_hint">#FFA9AFB9</color>
+    <color name="label_bg">#F0252830</color>
+    <color name="label_text">#FFFFFFFF</color>
     <color name="launcher_bg">#FF101217</color>
 </resources>

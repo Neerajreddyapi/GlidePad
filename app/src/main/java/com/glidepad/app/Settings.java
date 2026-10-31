@@ -5,11 +5,15 @@ import android.content.SharedPreferences;
 final class Settings {
     private static final float MIN_SPEED = 0.3f, MAX_SPEED = 3f;
 
+    static final int THEME_SYSTEM = 0, THEME_LIGHT = 1, THEME_DARK = 2;
+
+    int theme = THEME_SYSTEM;
     float pointerSpeed = 1f, scrollSpeed = 1f;
     boolean tapToClick = true, reverseScroll, momentum = true, clickButtons, haptics = true;
 
     static Settings load(SharedPreferences p) {
         Settings s = new Settings();
+        s.theme = p.getInt("theme", THEME_SYSTEM);
         s.pointerSpeed = p.getFloat("pointerSpeed", 1f);
         s.scrollSpeed = p.getFloat("scrollSpeed", 1f);
         s.tapToClick = p.getBoolean("tapToClick", true);
@@ -22,6 +26,7 @@ final class Settings {
 
     void save(SharedPreferences p) {
         p.edit()
+                .putInt("theme", theme)
                 .putFloat("pointerSpeed", pointerSpeed)
                 .putFloat("scrollSpeed", scrollSpeed)
                 .putBoolean("tapToClick", tapToClick)

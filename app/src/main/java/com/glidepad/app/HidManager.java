@@ -81,7 +81,7 @@ public final class HidManager {
 
     private volatile BluetoothHidDevice hid;
     private volatile BluetoothDevice host, connecting;
-    private volatile boolean registered, unsupported, proxyRequested, started;
+    private volatile boolean registered, unsupported, proxyRequested, started, userDisconnected;
 
     private HidManager(Context app) {
         this.app = app;
@@ -181,6 +181,7 @@ public final class HidManager {
     public void connect(BluetoothDevice d) {
         BluetoothHidDevice h = hid;
         if (h == null || d == null) return;
+        userDisconnected = false;
         if (host != null && !host.equals(d)) h.disconnect(host);
         connecting = d;
         changed();
@@ -190,7 +191,15 @@ public final class HidManager {
     public void disconnect() {
         BluetoothHidDevice h = hid;
         BluetoothDevice d = host;
+        userDisconnected = true;
         if (h != null && d != null) h.disconnect(d);
+    }
+
+    /** Called when the app comes back to the screen: reconnect to the last Mac if idle. */
+    public void reconnectLast() {
+        if (userDisconnected || state() != State.READY) return;
+        BluetoothDevice d = lastHost();
+        if (d != null) connect(d);
     }
 
     private void openProxy() {

@@ -5,10 +5,12 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.os.Build;
@@ -57,11 +59,24 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private KeyInputView keyInput;
 
     private int panel = PANEL_NONE, stickyMods;
-    private boolean imeWasVisible;
+    private boolean imeWasVisible, settingsOpen, connected;
     private final List<TextView> modifierChips = new ArrayList<>();
     private OnBackInvokedCallback backCallback;
 
     // ------------------------------------------------------------ lifecycle
+
+    /** Applies the Light/Dark choice from settings before any resources are loaded. */
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(base);
+        int theme = base.getSharedPreferences("settings", MODE_PRIVATE).getInt("theme", Settings.THEME_SYSTEM);
+        if (theme == Settings.THEME_SYSTEM) return;
+        Configuration c = new Configuration();
+        c.fontScale = 0; // leave the user's font size alone; only override night mode
+        int current = base.getResources().getConfiguration().uiMode;
+        c.uiMode = (current & ~Configuration.UI_MODE_NIGHT_MASK)
+                | (theme == Settings.THEME_DARK ? Configuration.UI_MODE_NIGHT_YES : Configuration.UI_MODE_NIGHT_NO);
+        applyOverrideConfiguration(c);
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -125,14 +140,27 @@ public class MainActivity extends Activity implements HidManager.Listener {
         buildSettings();
         clickBar.setVisibility(settings.clickButtons ? View.VISIBLE : View.GONE);
 
-        if (hasPermissions()) hid.start();
-        else requestPermissions(requiredPermissions(), REQ_PERMISSIONS);
+        // Theme changes recreate the activity; keep the settings sheet where it was.
+        if (b != null && b.getBoolean("settingsOpen")) {
+            settingsOpen = true;
+            settingsOverlay.setVisibility(View.VISIBLE);
+        }
+        if (!hasPermissions()) requestPermissions(requiredPermissions(), REQ_PERMISSIONS);
     }
 
     @Override protected void onStart() {
         super.onStart();
         hid.addListener(this);
+        if (hasPermissions()) { // also covers permission granted later from system settings
+            hid.start();
+            hid.reconnectLast();
+        }
         render();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putBoolean("settingsOpen", settingsOpen);
     }
 
     @Override protected void onStop() {
@@ -170,7 +198,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private void render() {
         boolean perms = hasPermissions();
         HidManager.State st = perms ? hid.state() : null;
-        boolean connected = st == HidManager.State.CONNECTED;
+        connected = st == HidManager.State.CONNECTED;
 
         connectPanel.setVisibility(connected ? View.GONE : View.VISIBLE);
         for (View v : new View[]{btnKeyboard, btnShortcuts, btnMedia}) {
@@ -230,6 +258,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
             buildPairedList();
         }
         renderSettingsConnection(connected);
+        updateBackHandling();
     }
 
     private void showEnable(String text) {
@@ -311,6 +340,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private void showPanel(int p) {
         if (panel == PANEL_KEYS && p != PANEL_KEYS) {
             getSystemService(InputMethodManager.class).hideSoftInputFromWindow(keyInput.getWindowToken(), 0);
+            keyInput.setActive(false);
             setSticky(0);
         }
         panel = p;
@@ -322,7 +352,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         btnMedia.setSelected(p == PANEL_MEDIA);
         if (p == PANEL_KEYS) {
             imeWasVisible = false;
-            keyInput.requestFocus();
+            keyInput.setActive(true);
             keyInput.post(() -> getSystemService(InputMethodManager.class).showSoftInput(keyInput, 0));
         }
         updateBackHandling();
@@ -408,6 +438,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
             chip.setPadding(px(6), px(9), px(6), px(9));
             TextView title = text((String) it[0], 14, R.color.text);
             title.setSingleLine(true);
+            title.setGravity(Gravity.CENTER);
             chip.addView(title);
             chip.addView(text((String) it[1], 12, R.color.text3));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
@@ -461,19 +492,49 @@ public class MainActivity extends Activity implements HidManager.Listener {
     // ------------------------------------------------------------ settings
 
     private void setSettingsOpen(boolean open) {
-        if (open == (settingsOverlay.getVisibility() == View.VISIBLE)) return;
+        if (open == settingsOpen) return;
+        settingsOpen = open;
+        settingsOverlay.animate().cancel();
+        settingsSheet.animate().cancel();
         if (open) {
             if (panel == PANEL_KEYS) showPanel(PANEL_NONE);
+            if (settingsOverlay.getVisibility() != View.VISIBLE) {
+                settingsOverlay.setAlpha(0f);
+                settingsSheet.setTranslationY(px(80));
+            }
             settingsOverlay.setVisibility(View.VISIBLE);
-            settingsOverlay.setAlpha(0f);
             settingsOverlay.animate().alpha(1f).setDuration(160).start();
-            settingsSheet.setTranslationY(px(80));
             settingsSheet.animate().translationY(0).setDuration(220).start();
         } else {
             settingsOverlay.animate().alpha(0f).setDuration(140)
-                    .withEndAction(() -> settingsOverlay.setVisibility(View.GONE)).start();
+                    .withEndAction(() -> { if (!settingsOpen) settingsOverlay.setVisibility(View.GONE); }).start();
         }
-        updateBackHandling(open);
+        updateBackHandling();
+    }
+
+    private View themePicker() {
+        LinearLayout row = new LinearLayout(this);
+        row.setPadding(0, px(8), 0, px(4));
+        String[] names = {"System", "Light", "Dark"};
+        for (int i = 0; i < names.length; i++) {
+            TextView t = text(names[i], 15, R.color.text);
+            t.setGravity(Gravity.CENTER);
+            t.setBackgroundResource(R.drawable.chip);
+            boolean selected = settings.theme == i;
+            t.setSelected(selected);
+            if (selected) t.setTextColor(getColor(android.R.color.white));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, px(44), 1);
+            if (i > 0) lp.leftMargin = px(8);
+            row.addView(t, lp);
+            int theme = i;
+            t.setOnClickListener(v -> {
+                if (settings.theme == theme) return;
+                settings.theme = theme;
+                settings.save(prefs);
+                recreate();
+            });
+        }
+        return row;
     }
 
     private void buildSettings() {
@@ -498,6 +559,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
         settingsConnBtn.setOnClickListener(v -> { hid.disconnect(); setSettingsOpen(false); });
         conn.addView(settingsConnBtn);
         settingsContent.addView(conn);
+
+        settingsContent.addView(caption("APPEARANCE"));
+        settingsContent.addView(themePicker());
 
         settingsContent.addView(caption("POINTER"));
         settingsContent.addView(slider("Pointer speed", settings.pointerSpeed, v -> settings.pointerSpeed = v));
@@ -609,16 +673,17 @@ public class MainActivity extends Activity implements HidManager.Listener {
     // ---------------------------------------------------------- back, insets
 
     private boolean handleBack() {
-        if (settingsOverlay.getVisibility() == View.VISIBLE) { setSettingsOpen(false); return true; }
+        if (settingsOpen) { setSettingsOpen(false); return true; }
         if (panel != PANEL_NONE) { showPanel(PANEL_NONE); return true; }
+        // While connected, Back just hides the app so the Mac stays connected.
+        // Use Settings → Disconnect to let go of the Mac.
+        if (connected) { moveTaskToBack(true); return true; }
         return false;
     }
 
-    private void updateBackHandling() { updateBackHandling(settingsOverlay.getVisibility() == View.VISIBLE); }
-
-    private void updateBackHandling(boolean settingsOpen) {
+    private void updateBackHandling() {
         if (Build.VERSION.SDK_INT < 33) return; // onBackPressed covers older versions
-        boolean need = settingsOpen || panel != PANEL_NONE;
+        boolean need = settingsOpen || panel != PANEL_NONE || connected;
         OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
         if (need && backCallback == null) {
             backCallback = this::handleBack;

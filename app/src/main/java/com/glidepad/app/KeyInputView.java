@@ -22,8 +22,17 @@ public class KeyInputView extends View {
 
     public KeyInputView(Context c, AttributeSet a) {
         super(c, a);
-        setFocusable(true);
-        setFocusableInTouchMode(true);
+        setActive(false);
+    }
+
+    /**
+     * Only focusable while the keyboard panel is open. Otherwise Android may pop the
+     * soft keyboard up on its own whenever the window regains focus.
+     */
+    void setActive(boolean active) {
+        setFocusable(active);
+        setFocusableInTouchMode(active);
+        if (active) requestFocus(); else clearFocus();
     }
 
     void setListener(Listener l) { listener = l; }
