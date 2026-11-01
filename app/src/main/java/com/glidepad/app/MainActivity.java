@@ -783,11 +783,19 @@ public class MainActivity extends Activity implements HidManager.Listener {
             row.addView(text(g[1], 14, R.color.text));
             settingsContent.addView(row);
         }
-        TextView note = text("Three fingers are left to your phone (screenshots, Mind Space). "
-                + "Spread your four fingers a little so the screen sees each one.", 13, R.color.text3);
-        note.setLineSpacing(0, 1.15f);
-        note.setPadding(0, px(10), 0, px(6));
-        settingsContent.addView(note);
+        TextView note = text("", 13, R.color.text2);
+        note.setText(Html.fromHtml("<b>Note:</b> 3 and 4-finger gestures may not work on every phone. "
+                + "Many phones (OnePlus and others) use multi-finger swipes for their own features, like "
+                + "screenshots and Mind Space, and Android doesn't let apps override that. "
+                + "Glide Pad leaves 3 fingers to your phone. If 4-finger swipes don't reach your Mac, "
+                + "use the ⌘ shortcuts panel instead.", Html.FROM_HTML_MODE_COMPACT));
+        note.setLineSpacing(0, 1.2f);
+        note.setBackgroundResource(R.drawable.note_card);
+        note.setPadding(px(14), px(12), px(14), px(12));
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nlp.topMargin = px(12);
+        nlp.bottomMargin = px(6);
+        settingsContent.addView(note, nlp);
     }
 
     private void renderSettingsConnection(boolean connected) {
