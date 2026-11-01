@@ -26,4 +26,9 @@
     <color name="pad_hint">#FF4A505B</color>
     <color name="label_bg">#F0262A33</color>
     <color name="label_text">#FFF2F3F5</color>
+    <color name="kb_bg">#FF16181D</color>
+    <color name="key">#FF34373F</color>
+    <color name="key_special">#FF24272E</color>
+    <color name="key_pressed">#FF4B4F59</color>
+    <color name="key_shadow">#80000000</color>
 </resources>

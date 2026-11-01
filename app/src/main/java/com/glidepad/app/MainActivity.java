@@ -28,6 +28,7 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
@@ -57,7 +58,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private View content, connectPanel, settingsOverlay, settingsSheet, clickBar, statusDot, firstTimeCard, pairedCard, pairHint;
     private TextView statusText, connectStatus, enableBtn, settingsConnLabel, settingsConnBtn;
     private LinearLayout steps, pairedList, keyRowContent, shortcutPanel, mediaPanel, settingsContent;
-    private View keyRow;
+    private View keyRow, workArea;
+    private LinearLayout bottomDock, sideDock;
+    private MacKeyboardView macKeyboard;
     private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
     private static boolean gestureTipShown; // once per app run
     private TrackpadView pad;
@@ -117,6 +120,10 @@ public class MainActivity extends Activity implements HidManager.Listener {
         btnSettings = findViewById(R.id.btnSettings);
         pad = findViewById(R.id.pad);
         keyInput = findViewById(R.id.keyInput);
+        workArea = findViewById(R.id.workArea);
+        bottomDock = findViewById(R.id.bottomDock);
+        sideDock = findViewById(R.id.sideDock);
+        macKeyboard = findViewById(R.id.macKeyboard);
 
         setupInsets();
         applyOrientation();
@@ -129,14 +136,16 @@ public class MainActivity extends Activity implements HidManager.Listener {
             applyOrientation();
             haptic(v);
         });
-        keyInput.setListener(new KeyInputView.Listener() {
+        KeyInputView.Listener typing = new KeyInputView.Listener() {
             @Override public void onChar(char c) {
                 int k = Keys.forChar(c);
                 if (k >= 0) hid.key((k >> 8) | takeSticky(), k & 0xFF);
             }
 
             @Override public void onKey(int code) { hid.key(takeSticky(), code); }
-        });
+        };
+        keyInput.setListener(typing);    // phone keyboard (portrait)
+        macKeyboard.setListener(typing); // built-in keyboard (landscape)
 
         btnKeyboard.setOnClickListener(v -> showPanel(panel == PANEL_KEYS ? PANEL_NONE : PANEL_KEYS));
         btnShortcuts.setOnClickListener(v -> showPanel(panel == PANEL_SHORTCUTS ? PANEL_NONE : PANEL_SHORTCUTS));
@@ -153,6 +162,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         buildShortcuts();
         buildMedia();
         buildSettings();
+        dockPanels();
+        layoutSettingsSheet();
         clickBar.setVisibility(settings.clickButtons ? View.VISIBLE : View.GONE);
 
         // Theme changes recreate the activity; keep the settings sheet where it was.
@@ -198,8 +209,71 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     @Override public void onConfigurationChanged(Configuration c) {
         super.onConfigurationChanged(c);
-        buildShortcuts(); // 3 columns upright, 6 sideways
+        showPanel(PANEL_NONE);
+        dockPanels();
+        layoutSettingsSheet();
         applyOrientation();
+    }
+
+    private boolean isLandscape() {
+        return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
+    /** Width of the right-half cards used in landscape. */
+    private int halfWidth() {
+        return getResources().getDisplayMetrics().widthPixels / 2 - px(12);
+    }
+
+    /**
+     * Portrait: panels sit under the pad. Landscape: they live in a card on the right half
+     * that slides up from the bottom, so the left half of the pad stays usable.
+     */
+    private void dockPanels() {
+        boolean land = isLandscape();
+        LinearLayout target = land ? sideDock : bottomDock;
+        View[] views = {keyRow, macKeyboard, shortcutPanel, mediaPanel};
+        for (View v : views) ((ViewGroup) v.getParent()).removeView(v);
+        for (View v : views) target.addView(v);
+        sideDock.animate().cancel();
+        sideDock.setVisibility(View.GONE);
+        sideDock.setTranslationY(0);
+        if (land) {
+            ViewGroup.LayoutParams lp = sideDock.getLayoutParams();
+            lp.width = halfWidth();
+            sideDock.setLayoutParams(lp);
+        }
+    }
+
+    private void slideDock(boolean show) {
+        sideDock.animate().cancel();
+        if (show) {
+            if (sideDock.getVisibility() != View.VISIBLE) {
+                sideDock.setVisibility(View.VISIBLE);
+                sideDock.setTranslationY(workArea.getHeight());
+            }
+            sideDock.animate().translationY(0).setDuration(280)
+                    .setInterpolator(new DecelerateInterpolator(2.2f)).start();
+        } else {
+            sideDock.animate().translationY(sideDock.getHeight() + px(24)).setDuration(200)
+                    .withEndAction(() -> { if (panel == PANEL_NONE) sideDock.setVisibility(View.GONE); }).start();
+        }
+    }
+
+    /** Full-width bottom sheet upright; a right-half sheet sideways. */
+    private void layoutSettingsSheet() {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) settingsSheet.getLayoutParams();
+        if (isLandscape()) {
+            lp.width = halfWidth();
+            lp.gravity = Gravity.BOTTOM | Gravity.END;
+            lp.topMargin = px(16);
+            lp.setMarginEnd(px(12));
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            lp.gravity = Gravity.BOTTOM;
+            lp.topMargin = px(72);
+            lp.setMarginEnd(0);
+        }
+        settingsSheet.setLayoutParams(lp);
     }
 
     /** Portrait, or landscape (either way up) with the system bars tucked away for a wider pad. */
@@ -400,17 +474,28 @@ public class MainActivity extends Activity implements HidManager.Listener {
             keyInput.setActive(false);
             setSticky(0);
         }
+        boolean land = isLandscape();
+        int old = panel;
         panel = p;
         keyRow.setVisibility(p == PANEL_KEYS ? View.VISIBLE : View.GONE);
+        macKeyboard.setVisibility(p == PANEL_KEYS && land ? View.VISIBLE : View.GONE);
         shortcutPanel.setVisibility(p == PANEL_SHORTCUTS ? View.VISIBLE : View.GONE);
         mediaPanel.setVisibility(p == PANEL_MEDIA ? View.VISIBLE : View.GONE);
         btnKeyboard.setSelected(p == PANEL_KEYS);
         btnShortcuts.setSelected(p == PANEL_SHORTCUTS);
         btnMedia.setSelected(p == PANEL_MEDIA);
-        if (p == PANEL_KEYS) {
+        if (p == PANEL_KEYS && land) {
+            macKeyboard.reset();
+            macKeyboard.setHaptics(settings.haptics);
+        } else if (p == PANEL_KEYS) {
             imeWasVisible = false;
             keyInput.setActive(true);
             keyInput.post(() -> getSystemService(InputMethodManager.class).showSoftInput(keyInput, 0));
+        }
+        if (land) {
+            sideDock.setBackgroundTintList(ColorStateList.valueOf(getColor(p == PANEL_KEYS ? R.color.kb_bg : R.color.surface)));
+            if (p != PANEL_NONE && (old == PANEL_NONE || sideDock.getVisibility() != View.VISIBLE)) slideDock(true);
+            else if (p == PANEL_NONE && old != PANEL_NONE) slideDock(false);
         }
         updateBackHandling();
     }
@@ -480,7 +565,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 {"Lock screen", "⌃ ⌘ Q", Keys.CTRL | Keys.CMD, Keys.KEY_Q},
         };
         shortcutPanel.removeAllViews();
-        int cols = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 6 : 3;
+        int cols = 3;
         LinearLayout row = null;
         for (int i = 0; i < items.length; i++) {
             if (i % cols == 0) {
@@ -558,7 +643,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         settingsOverlay.animate().cancel();
         settingsSheet.animate().cancel();
         if (open) {
-            if (panel == PANEL_KEYS) showPanel(PANEL_NONE);
+            if (panel == PANEL_KEYS || isLandscape()) showPanel(PANEL_NONE); // sideways, the sheet takes the panel's spot
             if (settingsOverlay.getVisibility() != View.VISIBLE) {
                 settingsOverlay.setAlpha(0f);
                 settingsSheet.setTranslationY(settingsSheet.getHeight() > 0 ? settingsSheet.getHeight() : px(160));

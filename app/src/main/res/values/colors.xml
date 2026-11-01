@@ -28,4 +28,9 @@
     <color name="label_bg">#F0252830</color>
     <color name="label_text">#FFFFFFFF</color>
     <color name="launcher_bg">#FF101217</color>
+    <color name="kb_bg">#FFD3D6DD</color>
+    <color name="key">#FFFFFFFF</color>
+    <color name="key_special">#FFADB3BE</color>
+    <color name="key_pressed">#FFC2C7D0</color>
+    <color name="key_shadow">#33000000</color>
 </resources>
