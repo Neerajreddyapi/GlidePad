@@ -15,35 +15,20 @@ For anything bigger than a small fix, please open an issue first so we can agree
 
 ## Development setup
 
-### Requirements
+Follow the **[development setup in the README](README.md#development-setup)** to install Android Studio and run Glide Pad on your phone. You'll need:
 
-- [Android Studio](https://developer.android.com/studio) (latest stable), or JDK 17+ with the Android SDK
-- An Android phone running **Android 9 or newer** with USB debugging on
-- A computer with Bluetooth to connect to (Glide Pad is designed for macOS)
+- an Android phone running **Android 9 or newer** with USB debugging on
+- a computer with Bluetooth to connect to (Glide Pad is designed for macOS)
 
-The Android emulator can run the app and show the UI, but it can't act as a Bluetooth keyboard and mouse for a real computer, so anything touching connection, gestures or typing must be tested on a real phone.
-
-### Get the code
+When contributing, fork the repo on GitHub, clone your fork, and add the original repo as `upstream`:
 
 ```sh
-# 1. Fork the repo on GitHub, then:
 git clone https://github.com/<your-username>/GlidePad.git
 cd GlidePad
 git remote add upstream https://github.com/Neerajreddyapi/GlidePad.git
 ```
 
-Open the folder in Android Studio and let Gradle sync. There are no third-party libraries, so nothing else needs to be installed.
-
-### Build and run
-
-```sh
-./gradlew assembleDebug      # debug APK -> app/build/outputs/apk/debug/
-./gradlew installDebug       # build and install on the connected phone
-```
-
-Or press **Run** in Android Studio. You don't need any signing keys: without `keystore.properties` the release build falls back to the debug key.
-
-Uninstall the Google Play version of Glide Pad before installing your own build. Both use the same app ID but different signing keys, so Android refuses to install one over the other.
+You don't need any signing keys: without `keystore.properties` the release build falls back to the debug key.
 
 ### Project structure
 

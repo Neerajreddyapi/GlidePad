@@ -59,10 +59,43 @@ Android 9 added [`BluetoothHidDevice`](https://developer.android.com/reference/a
 | [`HidService.java`](app/src/main/java/com/glidepad/app/HidService.java) | Foreground service that keeps the Mac connected in the background |
 | [`MainActivity.java`](app/src/main/java/com/glidepad/app/MainActivity.java) | Screens, panels, settings and pairing |
 
-## Build
+## Development setup
 
-Requirements: Android Studio (or JDK 17+) and the Android SDK. No third-party libraries.
+Want to change Glide Pad or build it yourself? Here's how to set up your environment.
 
+1. **Install [Android Studio](https://developer.android.com/studio).** It includes the Android SDK and a bundled JDK. In *SDK Manager*, make sure **Android SDK Platform 36** is installed (the app compiles against API 36 and runs on Android 9.0+). There are no third-party libraries to install.
+2. **Clone the repo:**
+   ```sh
+   git clone https://github.com/Neerajreddyapi/GlidePad.git
+   cd GlidePad
+   ```
+3. **Open it in Android Studio** (*File → Open* → the `GlidePad` folder) and let Gradle sync. Android Studio creates `local.properties` with your SDK path for you.
+4. **Run it on a real phone:** turn on USB debugging, plug the phone in, pick it as the target and press **Run ▶**. Or, from the terminal:
+   ```sh
+   # macOS: use Android Studio's bundled JDK
+   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+   ./gradlew installDebug
+   ```
+   If Glide Pad from Google Play is already installed, uninstall it first. Android won't install a build signed with a different key over it.
+5. **Connect to a computer:** open the app, tap **Make phone visible**, then connect from the computer's Bluetooth settings.
+
+**Phone, not emulator:** the Android emulator can show the screens, but it can't act as a Bluetooth keyboard and mouse for a real computer. Test anything about connecting, gestures or typing on a phone.
+
+**Where to make changes**
+
+- **Gestures and the trackpad surface:** [`TrackpadView.java`](app/src/main/java/com/glidepad/app/TrackpadView.java). Speeds and thresholds are the constants at the top.
+- **Bluetooth, the HID descriptor and what gets sent to the computer:** [`HidManager.java`](app/src/main/java/com/glidepad/app/HidManager.java). Key codes and Mac shortcuts are in [`Keys.java`](app/src/main/java/com/glidepad/app/Keys.java).
+- **Screens, panels, settings and pairing:** [`MainActivity.java`](app/src/main/java/com/glidepad/app/MainActivity.java) and [`activity_main.xml`](app/src/main/res/layout/activity_main.xml).
+- **The landscape keyboard:** [`MacKeyboardView.java`](app/src/main/java/com/glidepad/app/MacKeyboardView.java).
+- **Colours:** [`values/colors.xml`](app/src/main/res/values/colors.xml) (light) and [`values-night/colors.xml`](app/src/main/res/values-night/colors.xml) (dark).
+- **Website and privacy policy:** [`docs/`](docs), published with GitHub Pages.
+
+**Logs:** Android's Bluetooth HID service and any crashes show up in logcat:
+```sh
+adb logcat -s HidDeviceService AndroidRuntime
+```
+
+**Release builds:**
 ```sh
 ./gradlew assembleRelease   # APK  -> app/build/outputs/apk/release/
 ./gradlew bundleRelease     # AAB  -> app/build/outputs/bundle/release/
@@ -81,7 +114,7 @@ Without that file, release builds are signed with the debug key so a fresh clone
 
 ## Contributing
 
-Contributions are welcome: bug reports, device test results, ideas and pull requests. Read the [contributing guide](CONTRIBUTING.md) for the development setup, how to test on a real phone, and how to open a pull request. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). Found a security problem? See the [security policy](SECURITY.md).
+Contributions are welcome: bug reports, device test results, ideas and pull requests. Set up your environment with the [development setup](#development-setup) above, then read the [contributing guide](CONTRIBUTING.md) for how to test on a real phone and open a pull request. Changes are listed in the [changelog](CHANGELOG.md). Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). Found a security problem? See the [security policy](SECURITY.md).
 
 ## Privacy
 
