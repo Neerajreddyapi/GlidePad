@@ -2,6 +2,11 @@
 
 All notable changes to Glide Pad are listed here. Versions follow `versionName` in `app/build.gradle.kts`.
 
+## [1.0.1] - 2026-11-02
+
+### Added
+- A Website link (glidepad.vercel.app) at the bottom of Settings, beside Privacy policy and Source code.
+
 ## [1.0] - 2026-11-01
 
 First public release.

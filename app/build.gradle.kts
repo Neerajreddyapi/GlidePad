@@ -20,8 +20,8 @@ android {
         applicationId = "com.neerajreddy.glidepad" // permanent on Google Play
         minSdk = 28 // BluetoothHidDevice (phone-as-keyboard/mouse) was added in Android 9
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     signingConfigs {

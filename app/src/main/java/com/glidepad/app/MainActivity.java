@@ -801,6 +801,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         LinearLayout links = new LinearLayout(this);
         links.setGravity(Gravity.CENTER);
         links.setPadding(0, px(22), 0, 0);
+        links.addView(link("Website", "https://glidepad.vercel.app"));
+        links.addView(text("  ·  ", 13, R.color.text3));
         links.addView(link("Privacy policy", "https://neerajreddyapi.github.io/GlidePad/privacy-policy.html"));
         links.addView(text("  ·  ", 13, R.color.text3));
         links.addView(link("Source code", "https://github.com/Neerajreddyapi/GlidePad"));
