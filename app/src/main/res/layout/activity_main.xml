@@ -52,37 +52,46 @@
             </LinearLayout>
 
             <ImageButton
+                android:id="@+id/btnRotate"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/icon_btn"
+                android:contentDescription="Rotate"
+                android:src="@drawable/ic_rotate" />
+
+            <ImageButton
                 android:id="@+id/btnKeyboard"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="10dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/icon_btn"
                 android:contentDescription="Keyboard"
                 android:src="@drawable/ic_keyboard" />
 
             <ImageButton
                 android:id="@+id/btnShortcuts"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/icon_btn"
                 android:contentDescription="Shortcuts"
                 android:src="@drawable/ic_command" />
 
             <ImageButton
                 android:id="@+id/btnMedia"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/icon_btn"
                 android:contentDescription="Media keys"
                 android:src="@drawable/ic_media" />
 
             <ImageButton
                 android:id="@+id/btnSettings"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:layout_marginStart="8dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/icon_btn"
                 android:contentDescription="Settings"
                 android:src="@drawable/ic_tune" />
@@ -298,7 +307,7 @@
         android:focusable="true"
         android:visibility="gone">
 
-        <ScrollView
+        <com.glidepad.app.SheetView
             android:id="@+id/settingsSheet"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -318,6 +327,6 @@
                 android:paddingTop="10dp"
                 android:paddingEnd="22dp"
                 android:paddingBottom="20dp" />
-        </ScrollView>
+        </com.glidepad.app.SheetView>
     </FrameLayout>
 </FrameLayout>

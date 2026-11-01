@@ -10,6 +10,7 @@ final class Settings {
     int theme = THEME_SYSTEM;
     float pointerSpeed = 1f, scrollSpeed = 1f;
     boolean tapToClick = true, reverseScroll, momentum = true, clickButtons, haptics = true;
+    boolean landscape, hideGestureTip;
 
     static Settings load(SharedPreferences p) {
         Settings s = new Settings();
@@ -21,6 +22,8 @@ final class Settings {
         s.momentum = p.getBoolean("momentum", true);
         s.clickButtons = p.getBoolean("clickButtons", false);
         s.haptics = p.getBoolean("haptics", true);
+        s.landscape = p.getBoolean("landscape", false);
+        s.hideGestureTip = p.getBoolean("hideGestureTip", false);
         return s;
     }
 
@@ -34,6 +37,8 @@ final class Settings {
                 .putBoolean("momentum", momentum)
                 .putBoolean("clickButtons", clickButtons)
                 .putBoolean("haptics", haptics)
+                .putBoolean("landscape", landscape)
+                .putBoolean("hideGestureTip", hideGestureTip)
                 .apply();
     }
 

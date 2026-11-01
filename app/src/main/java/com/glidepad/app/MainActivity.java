@@ -7,7 +7,9 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -22,7 +24,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -54,7 +58,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private TextView statusText, connectStatus, enableBtn, settingsConnLabel, settingsConnBtn;
     private LinearLayout steps, pairedList, keyRowContent, shortcutPanel, mediaPanel, settingsContent;
     private View keyRow;
-    private ImageButton btnKeyboard, btnShortcuts, btnMedia, btnSettings;
+    private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
+    private static boolean gestureTipShown; // once per app run
     private TrackpadView pad;
     private KeyInputView keyInput;
 
@@ -105,6 +110,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         shortcutPanel = findViewById(R.id.shortcutPanel);
         mediaPanel = findViewById(R.id.mediaPanel);
         settingsContent = findViewById(R.id.settingsContent);
+        btnRotate = findViewById(R.id.btnRotate);
         btnKeyboard = findViewById(R.id.btnKeyboard);
         btnShortcuts = findViewById(R.id.btnShortcuts);
         btnMedia = findViewById(R.id.btnMedia);
@@ -113,7 +119,16 @@ public class MainActivity extends Activity implements HidManager.Listener {
         keyInput = findViewById(R.id.keyInput);
 
         setupInsets();
+        applyOrientation();
         pad.setup(hid, settings);
+        pad.setOnGestureStolen(this::showGestureTip);
+        ((SheetView) settingsSheet).setOnDismiss(() -> setSettingsOpen(false));
+        btnRotate.setOnClickListener(v -> {
+            settings.landscape = !settings.landscape;
+            settings.save(prefs);
+            applyOrientation();
+            haptic(v);
+        });
         keyInput.setListener(new KeyInputView.Listener() {
             @Override public void onChar(char c) {
                 int k = Keys.forChar(c);
@@ -180,6 +195,48 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     @Override public void onHidStateChanged() { render(); }
+
+    @Override public void onConfigurationChanged(Configuration c) {
+        super.onConfigurationChanged(c);
+        buildShortcuts(); // 3 columns upright, 6 sideways
+        applyOrientation();
+    }
+
+    /** Portrait, or landscape (either way up) with the system bars tucked away for a wider pad. */
+    private void applyOrientation() {
+        setRequestedOrientation(settings.landscape
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        btnRotate.setSelected(settings.landscape);
+        if (Build.VERSION.SDK_INT < 30) return;
+        WindowInsetsController c = getWindow().getInsetsController();
+        if (c == null) return;
+        if (settings.landscape) {
+            c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            c.hide(WindowInsets.Type.systemBars());
+        } else {
+            c.show(WindowInsets.Type.systemBars());
+        }
+    }
+
+    private void showGestureTip() {
+        if (gestureTipShown || settings.hideGestureTip) return;
+        gestureTipShown = true;
+        new AlertDialog.Builder(this)
+                .setTitle("Your phone took that gesture")
+                .setMessage("Phones like OnePlus use three-finger swipes for screenshots and Mind Space, "
+                        + "and Android doesn't let apps override that.\n\n"
+                        + "To send three-finger swipes to your Mac, turn those off: open your phone's Settings "
+                        + "and search for “three-finger” and “Mind Space”.\n\n"
+                        + "Or use four fingers. They do the same things in Glide Pad.")
+                .setPositiveButton("Open phone settings",
+                        (d, w) -> startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)))
+                .setNegativeButton("Don't show again", (d, w) -> {
+                    settings.hideGestureTip = true;
+                    settings.save(prefs);
+                })
+                .setNeutralButton("OK", null)
+                .show();
+    }
 
     private String[] requiredPermissions() {
         if (Build.VERSION.SDK_INT >= 31)
@@ -422,9 +479,11 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 {"Close window", "⌘ W", Keys.CMD, Keys.KEY_W},
                 {"Lock screen", "⌃ ⌘ Q", Keys.CTRL | Keys.CMD, Keys.KEY_Q},
         };
+        shortcutPanel.removeAllViews();
+        int cols = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 6 : 3;
         LinearLayout row = null;
         for (int i = 0; i < items.length; i++) {
-            if (i % 3 == 0) {
+            if (i % cols == 0) {
                 row = new LinearLayout(this);
                 LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 if (i > 0) rlp.topMargin = px(6);
@@ -440,9 +499,11 @@ public class MainActivity extends Activity implements HidManager.Listener {
             title.setSingleLine(true);
             title.setGravity(Gravity.CENTER);
             chip.addView(title);
-            chip.addView(text((String) it[1], 12, R.color.text3));
+            TextView keys = text((String) it[1], 12, R.color.text3);
+            keys.setGravity(Gravity.CENTER);
+            chip.addView(keys);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-            if (i % 3 != 0) lp.leftMargin = px(6);
+            if (i % cols != 0) lp.leftMargin = px(6);
             row.addView(chip, lp);
             int mods = (Integer) it[2], code = (Integer) it[3];
             chip.setOnClickListener(v -> { hid.key(mods, code); haptic(v); });
@@ -500,13 +561,16 @@ public class MainActivity extends Activity implements HidManager.Listener {
             if (panel == PANEL_KEYS) showPanel(PANEL_NONE);
             if (settingsOverlay.getVisibility() != View.VISIBLE) {
                 settingsOverlay.setAlpha(0f);
-                settingsSheet.setTranslationY(px(80));
+                settingsSheet.setTranslationY(settingsSheet.getHeight() > 0 ? settingsSheet.getHeight() : px(160));
             }
             settingsOverlay.setVisibility(View.VISIBLE);
-            settingsOverlay.animate().alpha(1f).setDuration(160).start();
-            settingsSheet.animate().translationY(0).setDuration(220).start();
+            settingsOverlay.animate().alpha(1f).setDuration(180).start();
+            settingsSheet.animate().translationY(0).setDuration(260)
+                    .setInterpolator(new DecelerateInterpolator(2f)).start();
         } else {
-            settingsOverlay.animate().alpha(0f).setDuration(140)
+            // Slide the sheet away (continuing from wherever a drag left it) and fade the backdrop.
+            settingsSheet.animate().translationY(settingsSheet.getHeight()).setDuration(200).start();
+            settingsOverlay.animate().alpha(0f).setDuration(200)
                     .withEndAction(() -> { if (!settingsOpen) settingsOverlay.setVisibility(View.GONE); }).start();
         }
         updateBackHandling();
@@ -589,9 +653,10 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 {"Press and hold, then move", "Drag"},
                 {"Two-finger slide", "Scroll"},
                 {"Pinch", "Zoom (⌘+ / ⌘−)"},
-                {"Three-finger swipe up", "Mission Control"},
-                {"Three-finger swipe down", "App Exposé"},
-                {"Three-finger swipe ← →", "Switch desktop"},
+                {"3 or 4 fingers swipe up", "Mission Control"},
+                {"3 or 4 fingers swipe down", "App Exposé"},
+                {"3 or 4 fingers swipe ← →", "Switch desktop"},
+                {"4 fingers spread / pinch", "Show Desktop"},
                 {"Three-finger tap", "Middle click"},
         };
         for (String[] g : gestures) {
@@ -601,6 +666,12 @@ public class MainActivity extends Activity implements HidManager.Listener {
             row.addView(text(g[1], 14, R.color.text));
             settingsContent.addView(row);
         }
+        TextView note = text("Three-finger swipe taking a screenshot or opening Mind Space instead? "
+                + "That's your phone's own gesture. Turn it off in phone Settings (search “three-finger”), "
+                + "or use four fingers.", 13, R.color.text3);
+        note.setLineSpacing(0, 1.15f);
+        note.setPadding(0, px(10), 0, px(6));
+        settingsContent.addView(note);
     }
 
     private void renderSettingsConnection(boolean connected) {

@@ -27,10 +27,11 @@ public class TrackpadView extends View {
     private static final int NONE = 0, POINT = 1, SCROLL = 2, PINCH = 3, SWIPE = 4, DRAG = 5;
     private static final long TAP_MS = 260, LONG_PRESS_MS = 450, LABEL_MS = 1100, RIPPLE_MS = 380;
     private static final float TAP_TRAVEL_DP = 10, SCROLL_START_DP = 6, PINCH_START_DP = 30,
-            SWIPE_DP = 55, ZOOM_STEP = 1.28f, POINTER_BASE = 1.4f, WHEEL_PER_DP = 0.12f;
+            SWIPE_DP = 40, SPREAD_DP = 45, ZOOM_STEP = 1.28f, POINTER_BASE = 1.4f, WHEEL_PER_DP = 0.12f;
 
     private HidManager hid;
     private Settings settings;
+    private Runnable gestureListener;
     private final float density, slopDp;
 
     private int mode = NONE, maxPointers;
@@ -78,6 +79,9 @@ public class TrackpadView extends View {
         this.hid = hid;
         this.settings = settings;
     }
+
+    /** Called when the system takes over a multi-finger gesture before we could use it. */
+    void setOnGestureStolen(Runnable r) { gestureListener = r; }
 
     // ---------------------------------------------------------------- input
 
@@ -128,6 +132,8 @@ public class TrackpadView extends View {
             case MotionEvent.ACTION_CANCEL:
                 removeCallbacks(longPress);
                 if (mode == DRAG) hid.release(HidManager.BTN_LEFT);
+                // The phone's own 3-finger gestures (screenshot, Mind Space…) cancel our touch.
+                if (maxPointers >= 3 && !swipeFired && gestureListener != null) gestureListener.run();
                 mode = NONE;
                 recycleVelocity();
                 break;
@@ -185,11 +191,22 @@ public class TrackpadView extends View {
             return;
         }
 
-        // three or more fingers
+        // three or four fingers: Mac-style swipes; four-finger spread/pinch shows the desktop
         if (travel > slopDp) mode = SWIPE;
         swipeDx += dx;
         swipeDy += dy;
-        if (swipeFired || (Math.abs(swipeDx) < SWIPE_DP && Math.abs(swipeDy) < SWIPE_DP)) return;
+        if (swipeFired) return;
+        if (n >= 4) {
+            float spread = (span(e, -1) - startSpan) / density;
+            if (Math.abs(spread) > SPREAD_DP && Math.abs(spread) > Math.hypot(swipeDx, swipeDy)) {
+                swipeFired = true;
+                mode = SWIPE;
+                hid.key(0, Keys.F11); // macOS "Show Desktop" (pressing again brings the windows back)
+                feedback(spread > 0 ? "Show Desktop" : "Show windows", HapticFeedbackConstants.CONTEXT_CLICK);
+                return;
+            }
+        }
+        if (Math.abs(swipeDx) < SWIPE_DP && Math.abs(swipeDy) < SWIPE_DP) return;
         swipeFired = true;
         if (Math.abs(swipeDx) > Math.abs(swipeDy)) {
             // Like a Mac trackpad: swiping left reveals the desktop on the right.
