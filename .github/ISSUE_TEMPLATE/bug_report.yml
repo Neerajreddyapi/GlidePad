@@ -1,0 +1,62 @@
+name: Bug report
+description: Something isn't working as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Bluetooth behaviour differs between phones and computers, so the device details below really help.
+        Security problem? Please don't file it here. See [SECURITY.md](https://github.com/Neerajreddyapi/GlidePad/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: "Two-finger scroll moves the page the wrong way in Safari…"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect to the Mac
+        2. Rotate to landscape
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone model and Android version
+      placeholder: "OnePlus 13, Android 16"
+    validations:
+      required: true
+  - type: input
+    id: computer
+    attributes:
+      label: Computer and OS version
+      placeholder: "MacBook Air M2, macOS 26"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Glide Pad version
+      description: Shown in Android Settings → Apps → Glide Pad
+      placeholder: "1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Where did you install it from?
+      options:
+        - Google Play
+        - GitHub Releases
+        - Built it myself
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, screen recordings or logs help a lot.

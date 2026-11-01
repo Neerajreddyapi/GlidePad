@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/Neerajreddyapi/GlidePad/security/advisories/new
+    about: Please report security problems privately.
+  - name: Privacy policy
+    url: https://neerajreddyapi.github.io/GlidePad/privacy-policy.html
+    about: What Glide Pad does (and doesn't do) with your data.

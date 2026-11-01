@@ -2,6 +2,11 @@
 
 # Glide Pad
 
+[![Build](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml/badge.svg)](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/Neerajreddyapi/GlidePad)](https://github.com/Neerajreddyapi/GlidePad/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Android 9+](https://img.shields.io/badge/Android-9%2B-3DDC84)
+
 Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac. There is nothing to install on the Mac: it simply sees a Bluetooth keyboard and mouse.
 
 <p>
@@ -73,6 +78,10 @@ keyPassword=...
 ```
 
 Without that file, release builds are signed with the debug key so a fresh clone still builds and installs.
+
+## Contributing
+
+Contributions are welcome: bug reports, device test results, ideas and pull requests. Read the [contributing guide](CONTRIBUTING.md) for the development setup, how to test on a real phone, and how to open a pull request. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). Found a security problem? See the [security policy](SECURITY.md).
 
 ## Privacy
 
