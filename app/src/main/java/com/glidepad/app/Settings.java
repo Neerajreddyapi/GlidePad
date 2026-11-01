@@ -10,7 +10,8 @@ final class Settings {
     int theme = THEME_SYSTEM;
     float pointerSpeed = 1f, scrollSpeed = 1f;
     boolean tapToClick = true, reverseScroll, momentum = true, clickButtons, haptics = true;
-    boolean landscape, hideGestureTip;
+    boolean landscape;
+    int scrollLines = 1; // lines the Mac scrolls per scroll step
 
     static Settings load(SharedPreferences p) {
         Settings s = new Settings();
@@ -23,7 +24,7 @@ final class Settings {
         s.clickButtons = p.getBoolean("clickButtons", false);
         s.haptics = p.getBoolean("haptics", true);
         s.landscape = p.getBoolean("landscape", false);
-        s.hideGestureTip = p.getBoolean("hideGestureTip", false);
+        s.scrollLines = p.getInt("scrollLines", 1);
         return s;
     }
 
@@ -38,7 +39,7 @@ final class Settings {
                 .putBoolean("clickButtons", clickButtons)
                 .putBoolean("haptics", haptics)
                 .putBoolean("landscape", landscape)
-                .putBoolean("hideGestureTip", hideGestureTip)
+                .putInt("scrollLines", scrollLines)
                 .apply();
     }
 

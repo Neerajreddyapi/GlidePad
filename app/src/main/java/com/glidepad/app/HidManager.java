@@ -82,6 +82,7 @@ public final class HidManager {
     private volatile BluetoothHidDevice hid;
     private volatile BluetoothDevice host, connecting;
     private volatile boolean registered, unsupported, proxyRequested, started, userDisconnected;
+    private int registerAttempts;
 
     private HidManager(Context app) {
         this.app = app;
@@ -174,6 +175,7 @@ public final class HidManager {
     /** After an "unsupported" error, e.g. once another keyboard/mouse app has been closed. */
     public void retry() {
         unsupported = false;
+        registerAttempts = 0;
         if (hid != null) register(); else openProxy();
         changed();
     }
@@ -212,9 +214,20 @@ public final class HidManager {
         changed();
     }
 
+    /**
+     * Android's Bluetooth service unregisters a keyboard/mouse app once it is no longer visible
+     * (unless it runs a foreground service). Call this when the app comes back on screen.
+     */
+    public void ensureRegistered() {
+        if (started && hid != null && !registered && !unsupported) {
+            registerAttempts = 0;
+            register();
+        }
+    }
+
     private void register() {
         BluetoothHidDevice h = hid;
-        if (h == null) return;
+        if (h == null || registered) return;
         byte[] desc = new byte[DESCRIPTOR.length];
         for (int i = 0; i < desc.length; i++) desc[i] = (byte) DESCRIPTOR[i];
         BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
@@ -223,8 +236,12 @@ public final class HidManager {
         BluetoothHidDeviceAppQosSettings qos = new BluetoothHidDeviceAppQosSettings(
                 BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT, 800, 9, 0, 11250,
                 BluetoothHidDeviceAppQosSettings.MAX);
-        // Fails when the phone lacks HID-device support or another app already holds it.
-        if (!h.registerApp(sdp, null, qos, io::post, callback)) unsupported = true;
+        // Fails when the phone lacks HID-device support or another app already holds it, and
+        // briefly right after we return to the foreground (Android hasn't noticed yet): retry a few times.
+        if (!h.registerApp(sdp, null, qos, io::post, callback)) {
+            if (++registerAttempts < 4) { main.postDelayed(this::register, 400); return; }
+            unsupported = true;
+        }
         changed();
     }
 
@@ -271,7 +288,7 @@ public final class HidManager {
             if (!isRegistered) {
                 host = null;
                 connecting = null;
-            } else if (host == null) {
+            } else if (host == null && !userDisconnected) {
                 // Reconnect to the Mac we used last time (or the one the stack says is plugged).
                 BluetoothDevice target = plugged != null ? plugged : lastHost();
                 BluetoothHidDevice h = hid;

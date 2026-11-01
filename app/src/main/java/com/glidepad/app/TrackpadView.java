@@ -20,23 +20,24 @@ import android.view.View;
  * The touch surface. Gestures:
  *  1 finger move → pointer · tap → click · long-press then move → drag
  *  2 finger move → scroll (with momentum) · tap → right click · pinch → ⌘+ / ⌘−
- *  3 finger swipe ← → desktops, ↑ Mission Control, ↓ App Exposé · tap → middle click
+ *  4 finger swipe ← → desktops, ↑ Mission Control, ↓ App Exposé · spread/pinch → Show Desktop
+ *  (3 fingers are left alone: phones use them for screenshots etc.)
  */
 public class TrackpadView extends View {
 
     private static final int NONE = 0, POINT = 1, SCROLL = 2, PINCH = 3, SWIPE = 4, DRAG = 5;
     private static final long TAP_MS = 260, LONG_PRESS_MS = 450, LABEL_MS = 1100, RIPPLE_MS = 380;
     private static final float TAP_TRAVEL_DP = 10, SCROLL_START_DP = 6, PINCH_START_DP = 30,
-            SWIPE_DP = 40, SPREAD_DP = 45, ZOOM_STEP = 1.28f, POINTER_BASE = 1.4f, WHEEL_PER_DP = 0.12f;
+            SWIPE_DP = 35, SPREAD_DP = 40, ZOOM_STEP = 1.28f, POINTER_BASE = 1.4f, NOTCH_DP = 9f;
 
     private HidManager hid;
     private Settings settings;
-    private Runnable gestureListener;
     private final float density, slopDp;
 
     private int mode = NONE, maxPointers;
     private long downTime, lastMoveTime, lastScrollTime;
-    private float lastCx, lastCy, travel, gestureTravel, startSpan, stepSpan, swipeDx, swipeDy;
+    private float lastCx, lastCy, travel, gestureTravel, startSpan, stepSpan, swipeDx, swipeDy, fourSpan;
+    private float scrollAccX, scrollAccY;
     private boolean swipeFired;
     private VelocityTracker velocity;
     private float flingVx, flingVy;
@@ -80,9 +81,6 @@ public class TrackpadView extends View {
         this.settings = settings;
     }
 
-    /** Called when the system takes over a multi-finger gesture before we could use it. */
-    void setOnGestureStolen(Runnable r) { gestureListener = r; }
-
     // ---------------------------------------------------------------- input
 
     @SuppressLint("ClickableViewAccessibility")
@@ -98,21 +96,32 @@ public class TrackpadView extends View {
                 maxPointers = 1;
                 downTime = lastMoveTime = e.getEventTime();
                 travel = gestureTravel = 0;
+                swipeFired = false;
+                fourSpan = 0;
+                scrollAccX = scrollAccY = 0;
                 resetBaseline(e, -1);
                 postDelayed(longPress, LONG_PRESS_MS);
                 break;
 
-            case MotionEvent.ACTION_POINTER_DOWN:
-                maxPointers = Math.max(maxPointers, e.getPointerCount());
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                int count = e.getPointerCount(), before = maxPointers;
+                maxPointers = Math.max(maxPointers, count);
                 removeCallbacks(longPress);
                 resetBaseline(e, -1);
-                if (mode != DRAG) {
+                if (mode == DRAG) break;
+                // Only reset when a new kind of gesture starts. With 3–4 fingers on a phone one
+                // finger often flickers off and back on; that must not restart the swipe.
+                if (count == 2 && before == 1) {
+                    mode = NONE;
+                    travel = 0;
+                    startSpan = stepSpan = span(e, -1);
+                } else if (count >= 3 && before < 3) {
                     mode = NONE;
                     travel = swipeDx = swipeDy = 0;
-                    swipeFired = false;
-                    startSpan = stepSpan = span(e, -1);
                 }
+                if (count >= 4 && fourSpan == 0) fourSpan = span(e, -1);
                 break;
+            }
 
             case MotionEvent.ACTION_MOVE:
                 handleMove(e);
@@ -132,8 +141,8 @@ public class TrackpadView extends View {
             case MotionEvent.ACTION_CANCEL:
                 removeCallbacks(longPress);
                 if (mode == DRAG) hid.release(HidManager.BTN_LEFT);
-                // The phone's own 3-finger gestures (screenshot, Mind Space…) cancel our touch.
-                if (maxPointers >= 3 && !swipeFired && gestureListener != null) gestureListener.run();
+                // The phone's own multi-finger gestures cancel our touch; say so instead of silently failing.
+                if (maxPointers >= 4 && !swipeFired) feedback("Your phone took that gesture", HapticFeedbackConstants.LONG_PRESS);
                 mode = NONE;
                 recycleVelocity();
                 break;
@@ -165,9 +174,8 @@ public class TrackpadView extends View {
             if (mode == POINT) pointer(dx, dy, dist, dt);
             return;
         }
-        if (n < maxPointers) return; // fingers lifting one by one: ignore the leftovers
-
-        if (n == 2) {
+        if (maxPointers == 2) {
+            if (n < 2) return; // one finger lifted early: ignore the leftover
             float sp = span(e, -1);
             if (mode == NONE) {
                 float spanDelta = Math.abs(sp - startSpan) / density;
@@ -191,13 +199,15 @@ public class TrackpadView extends View {
             return;
         }
 
-        // three or four fingers: Mac-style swipes; four-finger spread/pinch shows the desktop
-        if (travel > slopDp) mode = SWIPE;
+        // Three fingers are left to the phone (screenshot, Mind Space). Four fingers = Mac gestures:
+        // swipes for Mission Control / App Exposé / desktops, spread or pinch for Show Desktop.
+        if (travel > slopDp) mode = SWIPE; // never a tap or a pointer move
+        if (maxPointers < 4 || n < 3) return; // tolerate one of the four fingers flickering
         swipeDx += dx;
         swipeDy += dy;
         if (swipeFired) return;
-        if (n >= 4) {
-            float spread = (span(e, -1) - startSpan) / density;
+        if (n >= 4 && fourSpan > 0) {
+            float spread = (span(e, -1) - fourSpan) / density;
             if (Math.abs(spread) > SPREAD_DP && Math.abs(spread) > Math.hypot(swipeDx, swipeDy)) {
                 swipeFired = true;
                 mode = SWIPE;
@@ -240,10 +250,6 @@ public class TrackpadView extends View {
                 hid.click(HidManager.BTN_RIGHT);
                 rippleAt = SystemClock.uptimeMillis();
                 feedback("Right click", HapticFeedbackConstants.KEYBOARD_TAP);
-            } else {
-                hid.click(HidManager.BTN_MIDDLE);
-                rippleAt = SystemClock.uptimeMillis();
-                feedback("Middle click", HapticFeedbackConstants.KEYBOARD_TAP);
             }
         }
         mode = NONE;
@@ -263,10 +269,21 @@ public class TrackpadView extends View {
         hid.move(dx * gain, dy * gain);
     }
 
+    /**
+     * Scrolling works in steps, like a mouse wheel: every {@code NOTCH_DP / scrollSpeed} of finger
+     * travel sends one step, and each step scrolls {@code scrollLines} lines on the Mac.
+     * With macOS "natural scrolling" (the default) the direction matches a real trackpad.
+     */
     private void scroll(float dx, float dy) {
-        // With macOS "natural scrolling" (the default) this matches a real trackpad.
-        float k = WHEEL_PER_DP * settings.scrollSpeed * (settings.reverseScroll ? -1 : 1);
-        hid.scroll(-dy * k, dx * k);
+        float dir = settings.reverseScroll ? -1 : 1;
+        float notch = NOTCH_DP / settings.scrollSpeed;
+        scrollAccY += -dy * dir;
+        scrollAccX += dx * dir;
+        int stepsY = (int) (scrollAccY / notch), stepsX = (int) (scrollAccX / notch);
+        if (stepsY == 0 && stepsX == 0) return;
+        scrollAccY -= stepsY * notch;
+        scrollAccX -= stepsX * notch;
+        hid.scroll(stepsY * settings.scrollLines, stepsX * settings.scrollLines);
     }
 
     // ------------------------------------------------------------- momentum

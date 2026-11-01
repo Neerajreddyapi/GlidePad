@@ -7,7 +7,6 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
-import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -62,7 +61,6 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private LinearLayout bottomDock, sideDock;
     private MacKeyboardView macKeyboard;
     private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
-    private static boolean gestureTipShown; // once per app run
     private TrackpadView pad;
     private KeyInputView keyInput;
 
@@ -128,7 +126,6 @@ public class MainActivity extends Activity implements HidManager.Listener {
         setupInsets();
         applyOrientation();
         pad.setup(hid, settings);
-        pad.setOnGestureStolen(this::showGestureTip);
         ((SheetView) settingsSheet).setOnDismiss(() -> setSettingsOpen(false));
         btnRotate.setOnClickListener(v -> {
             settings.landscape = !settings.landscape;
@@ -171,7 +168,16 @@ public class MainActivity extends Activity implements HidManager.Listener {
             settingsOpen = true;
             settingsOverlay.setVisibility(View.VISIBLE);
         }
-        if (!hasPermissions()) requestPermissions(requiredPermissions(), REQ_PERMISSIONS);
+        List<String> ask = new ArrayList<>();
+        for (String p : requiredPermissions())
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) ask.add(p);
+        // Optional: lets the "Connected to …" notification show. Asked once only.
+        if (Build.VERSION.SDK_INT >= 33 && !prefs.getBoolean("askedNotifications", false)
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            ask.add(Manifest.permission.POST_NOTIFICATIONS);
+            prefs.edit().putBoolean("askedNotifications", true).apply();
+        }
+        if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), REQ_PERMISSIONS);
     }
 
     @Override protected void onStart() {
@@ -179,6 +185,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         hid.addListener(this);
         if (hasPermissions()) { // also covers permission granted later from system settings
             hid.start();
+            hid.ensureRegistered(); // Android drops the registration if we were in the background
             hid.reconnectLast();
         }
         render();
@@ -292,26 +299,6 @@ public class MainActivity extends Activity implements HidManager.Listener {
         }
     }
 
-    private void showGestureTip() {
-        if (gestureTipShown || settings.hideGestureTip) return;
-        gestureTipShown = true;
-        new AlertDialog.Builder(this)
-                .setTitle("Your phone took that gesture")
-                .setMessage("Phones like OnePlus use three-finger swipes for screenshots and Mind Space, "
-                        + "and Android doesn't let apps override that.\n\n"
-                        + "To send three-finger swipes to your Mac, turn those off: open your phone's Settings "
-                        + "and search for “three-finger” and “Mind Space”.\n\n"
-                        + "Or use four fingers. They do the same things in Glide Pad.")
-                .setPositiveButton("Open phone settings",
-                        (d, w) -> startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)))
-                .setNegativeButton("Don't show again", (d, w) -> {
-                    settings.hideGestureTip = true;
-                    settings.save(prefs);
-                })
-                .setNeutralButton("OK", null)
-                .show();
-    }
-
     private String[] requiredPermissions() {
         if (Build.VERSION.SDK_INT >= 31)
             return new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE};
@@ -338,6 +325,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         }
         if (!connected && panel != PANEL_NONE) showPanel(PANEL_NONE);
         clickBar.setVisibility(connected && settings.clickButtons ? View.VISIBLE : View.GONE);
+        if (connected) HidService.ensureRunning(this); // keeps the Mac connected while switching apps
         if (connected) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -661,6 +649,48 @@ public class MainActivity extends Activity implements HidManager.Listener {
         updateBackHandling();
     }
 
+    /** How many lines the Mac scrolls for each scroll step, like a mouse's "lines per notch". */
+    private View linesPicker() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, px(8), 0, px(6));
+        box.addView(text("Lines per scroll step", 16, R.color.text));
+        TextView sub = text("How far the Mac scrolls for each step. Your Mac's own Mouse → Scrolling speed setting adds to this.",
+                13, R.color.text3);
+        sub.setPadding(0, px(2), 0, px(10));
+        box.addView(sub);
+        LinearLayout row = new LinearLayout(this);
+        int[] options = {1, 2, 3, 5, 8};
+        List<TextView> chips = new ArrayList<>();
+        for (int i = 0; i < options.length; i++) {
+            int lines = options[i];
+            TextView t = text(String.valueOf(lines), 15, R.color.text);
+            t.setGravity(Gravity.CENTER);
+            t.setBackgroundResource(R.drawable.chip);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, px(42), 1);
+            if (i > 0) lp.leftMargin = px(8);
+            row.addView(t, lp);
+            chips.add(t);
+            t.setOnClickListener(v -> {
+                settings.scrollLines = lines;
+                settings.save(prefs);
+                haptic(v);
+                markSelected(chips, options, lines);
+            });
+        }
+        markSelected(chips, options, settings.scrollLines);
+        box.addView(row);
+        return box;
+    }
+
+    private void markSelected(List<TextView> chips, int[] values, int selected) {
+        for (int i = 0; i < chips.size(); i++) {
+            boolean on = values[i] == selected;
+            chips.get(i).setSelected(on);
+            chips.get(i).setTextColor(getColor(on ? android.R.color.white : R.color.text));
+        }
+    }
+
     private View themePicker() {
         LinearLayout row = new LinearLayout(this);
         row.setPadding(0, px(8), 0, px(4));
@@ -714,15 +744,18 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
         settingsContent.addView(caption("POINTER"));
         settingsContent.addView(slider("Pointer speed", settings.pointerSpeed, v -> settings.pointerSpeed = v));
-        settingsContent.addView(slider("Scroll speed", settings.scrollSpeed, v -> settings.scrollSpeed = v));
 
-        settingsContent.addView(caption("BEHAVIOUR"));
-        settingsContent.addView(toggle("Tap to click", "Tap the pad to click. Off: use the click buttons.",
-                settings.tapToClick, v -> settings.tapToClick = v));
+        settingsContent.addView(caption("SCROLLING"));
+        settingsContent.addView(slider("Scroll speed", settings.scrollSpeed, v -> settings.scrollSpeed = v));
+        settingsContent.addView(linesPicker());
         settingsContent.addView(toggle("Reverse scroll direction", "Flip if scrolling feels backwards on your Mac.",
                 settings.reverseScroll, v -> settings.reverseScroll = v));
         settingsContent.addView(toggle("Scroll momentum", "Keep scrolling briefly after a flick.",
                 settings.momentum, v -> settings.momentum = v));
+
+        settingsContent.addView(caption("BEHAVIOUR"));
+        settingsContent.addView(toggle("Tap to click", "Tap the pad to click. Off: use the click buttons.",
+                settings.tapToClick, v -> settings.tapToClick = v));
         settingsContent.addView(toggle("Click buttons", "Show left and right buttons under the pad.",
                 settings.clickButtons, v -> {
                     settings.clickButtons = v;
@@ -738,11 +771,10 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 {"Press and hold, then move", "Drag"},
                 {"Two-finger slide", "Scroll"},
                 {"Pinch", "Zoom (⌘+ / ⌘−)"},
-                {"3 or 4 fingers swipe up", "Mission Control"},
-                {"3 or 4 fingers swipe down", "App Exposé"},
-                {"3 or 4 fingers swipe ← →", "Switch desktop"},
-                {"4 fingers spread / pinch", "Show Desktop"},
-                {"Three-finger tap", "Middle click"},
+                {"Four-finger swipe up", "Mission Control"},
+                {"Four-finger swipe down", "App Exposé"},
+                {"Four-finger swipe ← →", "Switch desktop"},
+                {"Four-finger spread / pinch", "Show Desktop"},
         };
         for (String[] g : gestures) {
             LinearLayout row = new LinearLayout(this);
@@ -751,9 +783,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
             row.addView(text(g[1], 14, R.color.text));
             settingsContent.addView(row);
         }
-        TextView note = text("Three-finger swipe taking a screenshot or opening Mind Space instead? "
-                + "That's your phone's own gesture. Turn it off in phone Settings (search “three-finger”), "
-                + "or use four fingers.", 13, R.color.text3);
+        TextView note = text("Three fingers are left to your phone (screenshots, Mind Space). "
+                + "Spread your four fingers a little so the screen sees each one.", 13, R.color.text3);
         note.setLineSpacing(0, 1.15f);
         note.setPadding(0, px(10), 0, px(6));
         settingsContent.addView(note);
