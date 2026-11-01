@@ -796,6 +796,32 @@ public class MainActivity extends Activity implements HidManager.Listener {
         nlp.topMargin = px(12);
         nlp.bottomMargin = px(6);
         settingsContent.addView(note, nlp);
+
+        // Footer: links + credit (same as Chroma Flow)
+        LinearLayout links = new LinearLayout(this);
+        links.setGravity(Gravity.CENTER);
+        links.setPadding(0, px(22), 0, 0);
+        links.addView(link("Privacy policy", "https://neerajreddyapi.github.io/GlidePad/privacy-policy.html"));
+        links.addView(text("  ·  ", 13, R.color.text3));
+        links.addView(link("Source code", "https://github.com/Neerajreddyapi/GlidePad"));
+        settingsContent.addView(links);
+        TextView crafted = text("Crafted by Neeraj Reddy", 13, R.color.text3);
+        crafted.setGravity(Gravity.CENTER);
+        crafted.setLetterSpacing(0.04f);
+        crafted.setPadding(0, px(6), 0, px(8));
+        settingsContent.addView(crafted);
+    }
+
+    private TextView link(String label, String url) {
+        TextView t = text(label, 13, R.color.text3);
+        t.setPaintFlags(t.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        t.setPadding(px(2), px(8), px(2), px(8));
+        t.setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+            } catch (android.content.ActivityNotFoundException ignored) { }
+        });
+        return t;
     }
 
     private void renderSettingsConnection(boolean connected) {
