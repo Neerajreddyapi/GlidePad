@@ -23,11 +23,5 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Build debug APK
+      - name: Build (checks that it compiles)
         run: ./gradlew assembleDebug --no-daemon
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: glidepad-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14

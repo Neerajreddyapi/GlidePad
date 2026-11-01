@@ -3,7 +3,7 @@
 # Glide Pad
 
 [![Build](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml/badge.svg)](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml)
-[![Latest release](https://img.shields.io/github/v/release/Neerajreddyapi/GlidePad)](https://github.com/Neerajreddyapi/GlidePad/releases/latest)
+[![Google Play](https://img.shields.io/badge/Google_Play-closed_testing-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Android 9+](https://img.shields.io/badge/Android-9%2B-3DDC84)
 
@@ -34,7 +34,7 @@ Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac. The
 
 ## Getting started
 
-1. Install the app: [download the APK](https://github.com/Neerajreddyapi/GlidePad/releases/latest) (Google Play coming soon).
+1. Install Glide Pad from [Google Play](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad). It's in closed testing now, with the public launch coming soon. Glide Pad is only distributed through Google Play; to build it yourself, see the [development setup](#development-setup).
 2. Open Glide Pad, allow Bluetooth, and tap **Make phone visible**.
 3. On the Mac, open **System Settings → Bluetooth**, click **Connect** next to your phone, and accept the code on both screens.
 

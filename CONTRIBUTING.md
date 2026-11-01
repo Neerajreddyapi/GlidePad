@@ -78,7 +78,7 @@ Say in the pull request which phone, Android version and computer you tested on.
 
 ## Releases
 
-Maintainers handle releases: bump `versionCode` and `versionName` in `app/build.gradle.kts`, tag the commit (`v1.1`), publish the APK on [GitHub Releases](https://github.com/Neerajreddyapi/GlidePad/releases), and upload the bundle to Google Play.
+Maintainers handle releases: bump `versionCode` and `versionName` in `app/build.gradle.kts`, add the changes to [CHANGELOG.md](CHANGELOG.md), tag the commit (`v1.1`) with a GitHub release that has the notes, and upload the bundle to Google Play. Glide Pad is only distributed through Google Play, so no APKs are attached to GitHub releases.
 
 ## Security
 

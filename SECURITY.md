@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest release of Glide Pad receives fixes. Please update to the newest version from [Google Play](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad) or [GitHub Releases](https://github.com/Neerajreddyapi/GlidePad/releases/latest) before reporting.
+Only the latest release of Glide Pad receives fixes. Please update to the newest version from [Google Play](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad) before reporting.
 
 ## Reporting a vulnerability
 
