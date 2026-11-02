@@ -123,7 +123,7 @@ public final class HidManager {
         return n == null || n.isEmpty() ? d.getAddress() : n;
     }
 
-    /** Paired devices that could be a computer, last-used first. */
+    /** Paired devices that could be a computer, tablet or TV, last-used first. */
     public List<BluetoothDevice> pairedComputers() {
         List<BluetoothDevice> out = new ArrayList<>();
         if (adapter == null || !adapter.isEnabled()) return out;
@@ -132,9 +132,14 @@ public final class HidManager {
         String last = prefs.getString("last", null);
         for (BluetoothDevice d : bonded) {
             int major = d.getBluetoothClass() == null ? 0x1F00 : d.getBluetoothClass().getMajorDeviceClass();
+            int cls = d.getBluetoothClass() == null ? 0 : d.getBluetoothClass().getDeviceClass();
             boolean computerLike = major == android.bluetooth.BluetoothClass.Device.Major.COMPUTER
                     || major == android.bluetooth.BluetoothClass.Device.Major.MISC
-                    || major == android.bluetooth.BluetoothClass.Device.Major.UNCATEGORIZED;
+                    || major == android.bluetooth.BluetoothClass.Device.Major.UNCATEGORIZED
+                    // smart TVs, smart monitors and TV boxes
+                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_VIDEO_DISPLAY_AND_LOUDSPEAKER
+                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_VIDEO_MONITOR
+                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_SET_TOP_BOX;
             if (!computerLike) continue;
             if (d.getAddress().equals(last)) out.add(0, d); else out.add(d);
         }

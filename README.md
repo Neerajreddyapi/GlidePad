@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Android 9+](https://img.shields.io/badge/Android-9%2B-3DDC84)
 
-Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac. There is nothing to install on the Mac: it simply sees a Bluetooth keyboard and mouse.
+Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac, Windows PC, Chromebook, iPad, Linux computer or smart TV. There is nothing to install on the other device: it simply sees a Bluetooth keyboard and mouse.
 
 <p>
   <img src="docs/screenshots/trackpad.jpg" width="160" alt="Trackpad">
@@ -23,9 +23,10 @@ Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac. The
 
 - **Trackpad:** move the pointer with pointer acceleration, tap to click, double-tap to double-click, press and hold then move to drag.
 - **Two-finger gestures:** two-finger tap to right-click, two-finger scroll in any direction with momentum, and pinch to zoom (⌘+ / ⌘−).
-- **Four-finger gestures:** swipe up for Mission Control, down for App Exposé, left or right to switch desktops, and spread or pinch to show the desktop.
+- **Works with your device:** pick Mac, Windows PC, Chromebook, iPad, Linux, Smart TV or Other, and Glide Pad sets up the right shortcuts, gestures, zoom keys and key names.
+- **Four-finger gestures** (Mac and Windows): Mission Control / Task View, App Exposé / show desktop, switching desktops, and spread to show the desktop.
 - **Keyboard:** type with your phone's keyboard in portrait, or with a built-in Mac-style keyboard in landscape that leaves half the trackpad free. A key row adds esc, tab, arrows and ⌘ ⌥ ⌃ ⇧.
-- **Shortcuts:** one tap for Spotlight, Mission Control, app switcher, copy, paste, undo, screenshot, close window, lock screen and more.
+- **Shortcuts:** one tap for the everyday shortcuts of your device (Spotlight or Start, app switcher, copy, paste, undo, screenshot, lock screen and more), or a remote-style panel for TVs.
 - **Media keys:** play/pause, next, previous, volume and mute.
 - **Landscape mode:** a wide, full-screen trackpad. Panels and settings slide up on the right half.
 - **Stays connected:** keeps the Mac connected while you switch apps, and reconnects to your last Mac when you open the app.
@@ -36,7 +37,7 @@ Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac. The
 
 1. Install Glide Pad from [Google Play](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad). It's in closed testing now, with the public launch coming soon. Glide Pad is only distributed through Google Play; to build it yourself, see the [development setup](#development-setup).
 2. Open Glide Pad, allow Bluetooth, and tap **Make phone visible**.
-3. On the Mac, open **System Settings → Bluetooth**, click **Connect** next to your phone, and accept the code on both screens.
+3. Choose what you're connecting to, then follow the steps on screen. On a Mac, for example: **System Settings → Bluetooth**, click **Connect** next to your phone, and accept the code on both screens. On Windows: **Settings → Bluetooth & devices → Add device → Bluetooth**.
 
 Paired the phone with the Mac before? Remove it on both devices first, then pair again so the Mac sees it as a keyboard and mouse.
 
@@ -45,11 +46,11 @@ Paired the phone with the Mac before? Remove it on both devices first, then pair
 - **Three and four-finger gestures may not work on every phone.** Many phones (OnePlus and others) use multi-finger swipes for their own features, such as screenshots, and Android doesn't let apps override that. Glide Pad leaves three fingers to your phone. If four-finger swipes don't reach your Mac, the ⌘ shortcuts panel does the same things.
 - **Scrolling moves in steps,** like a mouse wheel. Only Apple's own trackpads can do pixel-smooth scrolling and real Mac gestures, because they use a private protocol.
 - **Phone support:** you need Android 9 or newer. A few phone makers turn off Android's "Bluetooth keyboard and mouse" mode, and only one app can use it at a time.
-- **Other computers:** it's made for the Mac, and pointer, clicks, scrolling and typing should work with any computer that supports Bluetooth keyboards and mice. The gesture and shortcut keys are Mac shortcuts.
+- **Which devices:** anything that supports Bluetooth keyboards and mice: Macs, Windows PCs, Chromebooks, iPads, Linux computers and most smart TVs. A regular monitor only shows a picture, so connect to the computer it's plugged into instead.
 
 ## How it works
 
-Android 9 added [`BluetoothHidDevice`](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice), which lets a phone act as a Bluetooth HID device. Glide Pad registers one combined device with three reports: a mouse (5 buttons, 16-bit X/Y, wheel and horizontal pan), a keyboard and media keys. Gestures that a mouse can't express are sent as the matching Mac keyboard shortcuts (for example ⌃↑ for Mission Control).
+Android 9 added [`BluetoothHidDevice`](https://developer.android.com/reference/android/bluetooth/BluetoothHidDevice), which lets a phone act as a Bluetooth HID device. Glide Pad registers one combined device with three reports: a mouse (5 buttons, 16-bit X/Y, wheel and horizontal pan), a keyboard and media keys. Gestures that a mouse can't express are sent as the matching keyboard shortcuts for the chosen device (for example ⌃↑ for Mission Control on a Mac, Win+Tab for Task View on Windows).
 
 | File | What it does |
 |---|---|
@@ -57,7 +58,8 @@ Android 9 added [`BluetoothHidDevice`](https://developer.android.com/reference/a
 | [`TrackpadView.java`](app/src/main/java/com/glidepad/app/TrackpadView.java) | The touch surface and gesture recognition |
 | [`MacKeyboardView.java`](app/src/main/java/com/glidepad/app/MacKeyboardView.java) | The built-in landscape keyboard |
 | [`HidService.java`](app/src/main/java/com/glidepad/app/HidService.java) | Foreground service that keeps the Mac connected in the background |
-| [`MainActivity.java`](app/src/main/java/com/glidepad/app/MainActivity.java) | Screens, panels, settings and pairing |
+| [`MainActivity.java`](app/src/main/java/com/glidepad/app/MainActivity.java) | Screens, panels, settings, pairing and the device picker |
+| [`Platform.java`](app/src/main/java/com/glidepad/app/Platform.java) | Per-device shortcuts, gestures, zoom keys, key names and pairing steps |
 
 ## Development setup
 

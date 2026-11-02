@@ -11,11 +11,14 @@ final class Keys {
             MINUS = 0x2D, EQUAL = 0x2E, DELETE = 0x4C, F11 = 0x44,
             RIGHT = 0x4F, LEFT = 0x50, DOWN = 0x51, UP = 0x52;
 
-    static final int KEY_C = 0x06, KEY_Q = 0x14, KEY_V = 0x19, KEY_W = 0x1A, KEY_Z = 0x1D, KEY_4 = 0x21;
+    static final int KEY_A = 0x04, KEY_C = 0x06, KEY_D = 0x07, KEY_F = 0x09, KEY_H = 0x0B, KEY_L = 0x0F,
+            KEY_Q = 0x14, KEY_R = 0x15, KEY_S = 0x16, KEY_T = 0x17, KEY_V = 0x19, KEY_W = 0x1A, KEY_X = 0x1B,
+            KEY_Z = 0x1D, KEY_3 = 0x20, KEY_4 = 0x21, F4 = 0x3D;
 
-    // Consumer page usages (media keys).
+    // Consumer page usages (media keys, and TV-style Home / Back / Search).
     static final int PLAY_PAUSE = 0xCD, NEXT_TRACK = 0xB5, PREV_TRACK = 0xB6,
-            MUTE = 0xE2, VOLUME_UP = 0xE9, VOLUME_DOWN = 0xEA;
+            MUTE = 0xE2, VOLUME_UP = 0xE9, VOLUME_DOWN = 0xEA,
+            AC_SEARCH = 0x221, AC_HOME = 0x223, AC_BACK = 0x224;
 
     private static final String UNSHIFTED = "-=[]\\;'`,./";
     private static final String SHIFTED = "_+{}|:\"~<>?";

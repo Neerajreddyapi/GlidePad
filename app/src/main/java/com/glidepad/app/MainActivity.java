@@ -29,6 +29,8 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -60,6 +62,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private View keyRow, workArea;
     private LinearLayout bottomDock, sideDock;
     private MacKeyboardView macKeyboard;
+    private TextView connectTitle, deviceChip;
+    private FrameLayout picker; // "What are you connecting to?" screen
+    private Insets lastBars;
     private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
     private TrackpadView pad;
     private KeyInputView keyInput;
@@ -122,6 +127,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
         bottomDock = findViewById(R.id.bottomDock);
         sideDock = findViewById(R.id.sideDock);
         macKeyboard = findViewById(R.id.macKeyboard);
+        connectTitle = findViewById(R.id.connectTitle);
+        deviceChip = findViewById(R.id.deviceChip);
+        deviceChip.setOnClickListener(v -> showPicker());
 
         setupInsets();
         applyOrientation();
@@ -168,6 +176,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
             settingsOpen = true;
             settingsOverlay.setVisibility(View.VISIBLE);
         }
+        // First launch: ask what we're connecting to, so shortcuts and gestures fit.
+        if (settings.platform < 0 || (b != null && b.getBoolean("pickerOpen"))) showPicker();
         List<String> ask = new ArrayList<>();
         for (String p : requiredPermissions())
             if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) ask.add(p);
@@ -194,6 +204,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putBoolean("settingsOpen", settingsOpen);
+        out.putBoolean("pickerOpen", picker != null);
     }
 
     @Override protected void onStop() {
@@ -217,6 +228,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     @Override public void onConfigurationChanged(Configuration c) {
         super.onConfigurationChanged(c);
         showPanel(PANEL_NONE);
+        if (picker != null) showPicker(); // re-lay the tiles for the new width
         dockPanels();
         layoutSettingsSheet();
         applyOrientation();
@@ -345,7 +357,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         enableBtn.setVisibility(View.GONE);
 
         if (st == null) {
-            connectStatus.setText("Glide Pad needs Bluetooth permission to act as a trackpad and keyboard for your Mac.");
+            connectStatus.setText("Glide Pad needs Bluetooth permission to act as a trackpad and keyboard for your " + platform().noun + ".");
             showEnable("Allow Bluetooth");
         } else switch (st) {
             case NO_BLUETOOTH:
@@ -364,14 +376,18 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 connectStatus.setText("Starting Bluetooth trackpad…");
                 break;
             case CONNECTING:
-                connectStatus.setText("Connecting to " + hid.connectingName() + "…\nMake sure the Mac is awake and nearby.");
+                connectStatus.setText("Connecting to " + hid.connectingName() + "…\nMake sure your " + platform().noun + " is awake and nearby.");
                 break;
             case READY:
-                connectStatus.setText("Pair from your Mac, or pick a computer you've paired before.");
+                connectStatus.setText("Pair from your " + platform().noun + ", or pick a device you've paired before.");
                 break;
             default:
                 break;
         }
+        connectTitle.setText("Connect to your " + platform().noun);
+        boolean apple = platform().id == Platform.MAC || platform().id == Platform.IPAD;
+        btnShortcuts.setImageResource(apple ? R.drawable.ic_command : R.drawable.ic_apps);
+        deviceChip.setText(Html.fromHtml("Setting up for <b>" + Html.escapeHtml(platform().name) + "</b> · Change", Html.FROM_HTML_MODE_COMPACT));
         if (pairing) {
             buildSteps();
             buildPairedList();
@@ -405,8 +421,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
         steps.removeAllViews();
         String phone = Html.escapeHtml(hid.phoneName());
         steps.addView(step(1, "Tap <b>Make phone visible</b> below."));
-        steps.addView(step(2, "On the Mac, open <b>System Settings → Bluetooth</b>."));
-        steps.addView(step(3, "Next to <b>" + phone + "</b>, click <b>Connect</b> and accept the code on both screens."));
+        Platform p = platform();
+        steps.addView(step(2, p.pairStep2));
+        steps.addView(step(3, String.format(p.pairStep3, phone)));
     }
 
     private View step(int n, String html) {
@@ -432,7 +449,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         pairedList.removeAllViews();
         List<BluetoothDevice> devices = hid.pairedComputers();
         if (devices.isEmpty()) {
-            TextView none = text("None yet. Pair your Mac using the steps above.", 14, R.color.text3);
+            TextView none = text("None yet. Pair your " + platform().noun + " using the steps above.", 14, R.color.text3);
             none.setPadding(0, px(12), 0, px(10));
             pairedList.addView(none);
             return;
@@ -489,12 +506,13 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     private void buildKeyRow() {
+        keyRowContent.removeAllViews();
+        modifierChips.clear();
+        stickyMods = 0;
         addKeyChip("esc", 0, Keys.ESC);
         addKeyChip("tab", 0, Keys.TAB);
-        addKeyChip("⌘", Keys.CMD, 0);
-        addKeyChip("⌥", Keys.ALT, 0);
-        addKeyChip("⌃", Keys.CTRL, 0);
-        addKeyChip("⇧", Keys.SHIFT, 0);
+        Platform p = platform(); // ⌘ ⌥ ⌃ ⇧ on Apple devices, Ctrl Alt Win Shift on a PC, …
+        for (int i = 0; i < p.modLabels.length; i++) addKeyChip(p.modLabels[i], p.modBits[i], 0);
         addKeyChip("←", 0, Keys.LEFT);
         addKeyChip("↑", 0, Keys.UP);
         addKeyChip("↓", 0, Keys.DOWN);
@@ -538,20 +556,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     private void buildShortcuts() {
-        Object[][] items = {
-                {"Spotlight", "⌘ Space", Keys.CMD, Keys.SPACE},
-                {"Mission Control", "⌃ ↑", Keys.CTRL, Keys.UP},
-                {"Switch app", "⌘ Tab", Keys.CMD, Keys.TAB},
-                {"Copy", "⌘ C", Keys.CMD, Keys.KEY_C},
-                {"Paste", "⌘ V", Keys.CMD, Keys.KEY_V},
-                {"Undo", "⌘ Z", Keys.CMD, Keys.KEY_Z},
-                {"Desktop ←", "⌃ ←", Keys.CTRL, Keys.LEFT},
-                {"Desktop →", "⌃ →", Keys.CTRL, Keys.RIGHT},
-                {"App Exposé", "⌃ ↓", Keys.CTRL, Keys.DOWN},
-                {"Screenshot", "⌘ ⇧ 4", Keys.CMD | Keys.SHIFT, Keys.KEY_4},
-                {"Close window", "⌘ W", Keys.CMD, Keys.KEY_W},
-                {"Lock screen", "⌃ ⌘ Q", Keys.CTRL | Keys.CMD, Keys.KEY_Q},
-        };
+        Platform.Action[] items = platform().shortcuts;
         shortcutPanel.removeAllViews();
         int cols = 3;
         LinearLayout row = null;
@@ -562,24 +567,26 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 if (i > 0) rlp.topMargin = px(6);
                 shortcutPanel.addView(row, rlp);
             }
-            Object[] it = items[i];
+            Platform.Action it = items[i];
             LinearLayout chip = new LinearLayout(this);
             chip.setOrientation(LinearLayout.VERTICAL);
             chip.setGravity(Gravity.CENTER);
             chip.setBackgroundResource(R.drawable.chip);
             chip.setPadding(px(6), px(9), px(6), px(9));
-            TextView title = text((String) it[0], 14, R.color.text);
+            TextView title = text(it.label, 14, R.color.text);
             title.setSingleLine(true);
             title.setGravity(Gravity.CENTER);
             chip.addView(title);
-            TextView keys = text((String) it[1], 12, R.color.text3);
-            keys.setGravity(Gravity.CENTER);
-            chip.addView(keys);
+            if (!it.keys.isEmpty()) {
+                TextView keys = text(it.keys, 12, R.color.text3);
+                keys.setGravity(Gravity.CENTER);
+                chip.addView(keys);
+            }
+            chip.setMinimumHeight(px(56));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
             if (i % cols != 0) lp.leftMargin = px(6);
             row.addView(chip, lp);
-            int mods = (Integer) it[2], code = (Integer) it[3];
-            chip.setOnClickListener(v -> { hid.key(mods, code); haptic(v); });
+            chip.setOnClickListener(v -> { it.send(hid); haptic(v); });
         }
     }
 
@@ -655,7 +662,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(0, px(8), 0, px(6));
         box.addView(text("Lines per scroll step", 16, R.color.text));
-        TextView sub = text("How far the Mac scrolls for each step. Your Mac's own Mouse → Scrolling speed setting adds to this.",
+        TextView sub = text("How far the screen scrolls for each step. Your " + platform().noun + "'s own mouse scrolling setting adds to this.",
                 13, R.color.text3);
         sub.setPadding(0, px(2), 0, px(10));
         box.addView(sub);
@@ -717,6 +724,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     private void buildSettings() {
+        settingsContent.removeAllViews();
         View handle = new View(this);
         handle.setBackgroundResource(R.drawable.handle);
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(px(40), px(5));
@@ -739,6 +747,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
         conn.addView(settingsConnBtn);
         settingsContent.addView(conn);
 
+        settingsContent.addView(caption("DEVICE"));
+        settingsContent.addView(deviceRow());
+
         settingsContent.addView(caption("APPEARANCE"));
         settingsContent.addView(themePicker());
 
@@ -748,7 +759,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         settingsContent.addView(caption("SCROLLING"));
         settingsContent.addView(slider("Scroll speed", settings.scrollSpeed, v -> settings.scrollSpeed = v));
         settingsContent.addView(linesPicker());
-        settingsContent.addView(toggle("Reverse scroll direction", "Flip if scrolling feels backwards on your Mac.",
+        settingsContent.addView(toggle("Reverse scroll direction", "Flip if scrolling feels backwards on your " + platform().noun + ".",
                 settings.reverseScroll, v -> settings.reverseScroll = v));
         settingsContent.addView(toggle("Scroll momentum", "Keep scrolling briefly after a flick.",
                 settings.momentum, v -> settings.momentum = v));
@@ -765,17 +776,22 @@ public class MainActivity extends Activity implements HidManager.Listener {
                 settings.haptics, v -> settings.haptics = v));
 
         settingsContent.addView(caption("GESTURES"));
-        String[][] gestures = {
-                {"Tap", "Click"},
-                {"Two-finger tap", "Right click"},
-                {"Press and hold, then move", "Drag"},
-                {"Two-finger slide", "Scroll"},
-                {"Pinch", "Zoom (⌘+ / ⌘−)"},
-                {"Four-finger swipe up", "Mission Control"},
-                {"Four-finger swipe down", "App Exposé"},
-                {"Four-finger swipe ← →", "Switch desktop"},
-                {"Four-finger spread / pinch", "Show Desktop"},
-        };
+        Platform pf = platform();
+        List<String[]> gestures = new ArrayList<>();
+        gestures.add(new String[]{"Tap", "Click"});
+        gestures.add(new String[]{"Two-finger tap", "Right click"});
+        gestures.add(new String[]{"Press and hold, then move", "Drag"});
+        gestures.add(new String[]{"Two-finger slide", "Scroll"});
+        gestures.add(new String[]{"Pinch", pf.zoomMods == 0 ? "Not used on a TV"
+                : pf.zoomMods == Keys.CMD ? "Zoom (⌘+ / ⌘−)" : "Zoom (Ctrl + / Ctrl −)"});
+        if (pf.hasGestures()) {
+            gestures.add(new String[]{"Four-finger swipe up", pf.swipeUp.label});
+            gestures.add(new String[]{"Four-finger swipe down", pf.swipeDown.label});
+            gestures.add(new String[]{"Four-finger swipe ← →", "Switch desktop"});
+            gestures.add(new String[]{"Four-finger spread / pinch", pf.spread.label});
+        } else {
+            gestures.add(new String[]{"Four-finger swipes", "Not on " + pf.name + "; use Shortcuts"});
+        }
         for (String[] g : gestures) {
             LinearLayout row = new LinearLayout(this);
             row.setPadding(0, px(7), 0, px(7));
@@ -787,8 +803,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         note.setText(Html.fromHtml("<b>Note:</b> 3 and 4-finger gestures may not work on every phone. "
                 + "Many phones (OnePlus and others) use multi-finger swipes for their own features, like "
                 + "screenshots and Mind Space, and Android doesn't let apps override that. "
-                + "Glide Pad leaves 3 fingers to your phone. If 4-finger swipes don't reach your Mac, "
-                + "use the ⌘ shortcuts panel instead.", Html.FROM_HTML_MODE_COMPACT));
+                + "Glide Pad leaves 3 fingers to your phone. If 4-finger swipes don't reach your "
+                + Html.escapeHtml(pf.noun) + ", use the shortcuts panel instead.", Html.FROM_HTML_MODE_COMPACT));
         note.setLineSpacing(0, 1.2f);
         note.setBackgroundResource(R.drawable.note_card);
         note.setPadding(px(14), px(12), px(14), px(12));
@@ -893,9 +909,153 @@ public class MainActivity extends Activity implements HidManager.Listener {
         return t;
     }
 
+    // ------------------------------------------------------- device picker
+
+    private Platform platform() { return Platform.get(settings.platform); }
+
+    /** Settings row: the chosen device, with a Change button. */
+    private View deviceRow() {
+        Platform p = platform();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, px(8), 0, px(4));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(p.icon);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(R.color.accent)));
+        row.addView(icon, new LinearLayout.LayoutParams(px(28), px(28)));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(px(14), 0, px(12), 0);
+        texts.addView(text(p.name, 16, R.color.text));
+        texts.addView(text("Shortcuts, gestures and keys are set up for it", 13, R.color.text3));
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView change = smallButton("Change");
+        change.setOnClickListener(v -> { setSettingsOpen(false); showPicker(); });
+        row.addView(change);
+        return row;
+    }
+
+    /** Full-screen "What are you connecting to?" with a tile per kind of device. */
+    private void showPicker() {
+        FrameLayout root = findViewById(R.id.root);
+        if (picker != null) root.removeView(picker);
+        boolean firstTime = picker == null;
+        picker = new FrameLayout(this);
+        picker.setBackgroundColor(getColor(R.color.bg));
+        picker.setClickable(true);
+        if (lastBars != null) picker.setPadding(lastBars.left, lastBars.top, lastBars.right, lastBars.bottom);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(px(20), px(28), px(20), px(28));
+        scroll.addView(col);
+        picker.addView(scroll);
+
+        TextView title = text("What are you connecting to?", 26, R.color.text);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        col.addView(title);
+        TextView sub = text("Glide Pad sets up the right shortcuts, gestures and keys for it. You can change this any time in Settings.", 15, R.color.text2);
+        sub.setLineSpacing(0, 1.15f);
+        sub.setPadding(0, px(8), 0, px(20));
+        col.addView(sub);
+
+        Platform[] all = Platform.all();
+        int cols = isLandscape() ? 4 : 2;
+        LinearLayout row = null;
+        for (int i = 0; i < all.length; i++) {
+            if (i % cols == 0) {
+                row = new LinearLayout(this);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (i > 0) rlp.topMargin = px(10);
+                col.addView(row, rlp);
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+            if (i % cols != 0) lp.leftMargin = px(10);
+            row.addView(platformTile(all[i]), lp);
+        }
+        // Keep the last row's tiles the same width as the others.
+        for (int i = all.length % cols == 0 ? cols : all.length % cols; i < cols; i++) {
+            // A Space (not a plain View) so the row still takes its height from the real tile.
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1);
+            lp.leftMargin = px(10);
+            row.addView(new android.widget.Space(this), lp);
+        }
+
+        // Disclaimer: a plain monitor isn't a device you can pair with.
+        LinearLayout note = new LinearLayout(this);
+        note.setBackgroundResource(R.drawable.note_card);
+        note.setPadding(px(14), px(14), px(16), px(14));
+        ImageView info = new ImageView(this);
+        info.setImageResource(R.drawable.ic_info);
+        info.setImageTintList(ColorStateList.valueOf(getColor(R.color.text2)));
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(px(20), px(20));
+        ilp.rightMargin = px(12);
+        note.addView(info, ilp);
+        TextView nt = text("", 14, R.color.text2);
+        nt.setLineSpacing(0, 1.2f);
+        nt.setText(Html.fromHtml("<b>Using a regular monitor?</b> A monitor only shows a picture, so it can't connect "
+                + "to a trackpad on its own. Connect Glide Pad to the computer it's plugged into instead. Smart TVs and "
+                + "smart monitors with Bluetooth can connect directly: choose <b>Smart TV</b>.", Html.FROM_HTML_MODE_COMPACT));
+        note.addView(nt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nlp.topMargin = px(22);
+        col.addView(note, nlp);
+
+        root.addView(picker, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (firstTime) {
+            picker.setAlpha(0f);
+            picker.animate().alpha(1f).setDuration(180).start();
+        }
+        updateBackHandling();
+    }
+
+    private View platformTile(Platform p) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setBackgroundResource(R.drawable.chip);
+        tile.setPadding(px(16), px(16), px(12), px(16));
+        boolean chosen = p.id == settings.platform;
+        tile.setSelected(chosen);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(p.icon);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(chosen ? android.R.color.white : R.color.accent)));
+        tile.addView(icon, new LinearLayout.LayoutParams(px(32), px(32)));
+        TextView name = text(p.name, 16, chosen ? android.R.color.white : R.color.text);
+        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setPadding(0, px(12), 0, px(2));
+        tile.addView(name);
+        TextView sub = text(p.subtitle, 12, chosen ? android.R.color.white : R.color.text3);
+        tile.addView(sub);
+        tile.setContentDescription(p.name);
+        tile.setOnClickListener(v -> { haptic(v); choosePlatform(p.id); });
+        return tile;
+    }
+
+    private void choosePlatform(int id) {
+        settings.platform = id;
+        settings.save(prefs);
+        buildKeyRow();
+        buildShortcuts();
+        buildSettings();
+        render();
+        hidePicker();
+    }
+
+    private void hidePicker() {
+        if (picker == null) return;
+        View p = picker;
+        picker = null;
+        p.animate().alpha(0f).setDuration(160)
+                .withEndAction(() -> ((ViewGroup) findViewById(R.id.root)).removeView(p)).start();
+        updateBackHandling();
+    }
+
     // ---------------------------------------------------------- back, insets
 
     private boolean handleBack() {
+        if (picker != null && settings.platform >= 0) { hidePicker(); return true; }
         if (settingsOpen) { setSettingsOpen(false); return true; }
         if (panel != PANEL_NONE) { showPanel(PANEL_NONE); return true; }
         // While connected, Back just hides the app so the Mac stays connected.
@@ -906,7 +1066,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     private void updateBackHandling() {
         if (Build.VERSION.SDK_INT < 33) return; // onBackPressed covers older versions
-        boolean need = settingsOpen || panel != PANEL_NONE || connected;
+        boolean need = settingsOpen || panel != PANEL_NONE || connected || (picker != null && settings.platform >= 0);
         OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
         if (need && backCallback == null) {
             backCallback = this::handleBack;
@@ -930,6 +1090,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
             Insets ime = in.getInsets(WindowInsets.Type.ime());
             content.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             settingsSheet.setPadding(bars.left, 0, bars.right, bars.bottom);
+            lastBars = bars;
+            if (picker != null) picker.setPadding(bars.left, bars.top, bars.right, bars.bottom);
             boolean imeVisible = in.isVisible(WindowInsets.Type.ime());
             // Keyboard dismissed with the system back gesture: close the key row too.
             if (panel == PANEL_KEYS && imeWasVisible && !imeVisible) showPanel(PANEL_NONE);

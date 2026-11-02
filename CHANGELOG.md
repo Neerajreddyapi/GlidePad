@@ -2,6 +2,19 @@
 
 All notable changes to Glide Pad are listed here. Versions follow `versionName` in `app/build.gradle.kts`.
 
+## [1.1] - 2026-11-02
+
+### Added
+- Works with more than Macs: on first launch, choose what you're connecting to (Mac, Windows PC, Chromebook, iPad, Linux, Smart TV or Other). Change it any time in Settings → Device.
+- Each device gets its own shortcuts, four-finger gestures, zoom keys and key names. For example, Windows uses Ctrl/Alt/Win, Task View, Ctrl+Win+arrows for desktops and Win+D. A Smart TV gets a remote-style panel (Home, Back, OK, arrows, Search, volume).
+- Pairing steps for each kind of device.
+- A note explaining that a regular monitor can't be connected on its own: connect to the computer it's plugged into, or choose Smart TV for smart TVs and monitors.
+- Smart TVs, smart monitors and TV boxes show up in the paired devices list.
+
+### Changed
+- Scrolling direction is set per device, so content follows your fingers on Windows, Linux, Chromebook and TVs too.
+- Wording says "computer" or the device's name instead of always "Mac".
+
 ## [1.0.1] - 2026-11-02
 
 ### Added

@@ -146,12 +146,23 @@
                                 android:src="@drawable/ic_launcher_foreground" />
 
                             <TextView
+                                android:id="@+id/connectTitle"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:fontFamily="sans-serif-medium"
                                 android:text="Connect to your Mac"
                                 android:textColor="@color/text"
                                 android:textSize="26sp" />
+
+                            <TextView
+                                android:id="@+id/deviceChip"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:background="?android:attr/selectableItemBackground"
+                                android:padding="6dp"
+                                android:textColor="@color/accent"
+                                android:textSize="14sp" />
 
                             <TextView
                                 android:id="@+id/connectStatus"
@@ -182,7 +193,7 @@
 
                                 <TextView
                                     style="@style/Caption"
-                                    android:text="PAIR A NEW MAC" />
+                                    android:text="PAIR A NEW DEVICE" />
 
                                 <LinearLayout
                                     android:id="@+id/steps"
@@ -212,7 +223,7 @@
 
                                 <TextView
                                     style="@style/Caption"
-                                    android:text="PAIRED COMPUTERS" />
+                                    android:text="PAIRED DEVICES" />
 
                                 <LinearLayout
                                     android:id="@+id/pairedList"
@@ -229,7 +240,7 @@
                                 android:layout_marginTop="16dp"
                                 android:layout_marginEnd="8dp"
                                 android:lineSpacingMultiplier="1.15"
-                                android:text="Paired this phone with the Mac before? Remove it on both devices first, then pair again so the Mac sees it as a trackpad and keyboard."
+                                android:text="Paired this phone with that device before? Remove it on both devices first, then pair again so it sees your phone as a trackpad and keyboard."
                                 android:textColor="@color/text3"
                                 android:textSize="13sp" />
                         </LinearLayout>

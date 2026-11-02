@@ -11,7 +11,8 @@ final class Settings {
     float pointerSpeed = 1f, scrollSpeed = 1f;
     boolean tapToClick = true, reverseScroll, momentum = true, clickButtons, haptics = true;
     boolean landscape;
-    int scrollLines = 1; // lines the Mac scrolls per scroll step
+    int scrollLines = 1; // lines the computer scrolls per scroll step
+    int platform = -1;   // what we're connected to (Platform.MAC…); -1 = not chosen yet
 
     static Settings load(SharedPreferences p) {
         Settings s = new Settings();
@@ -25,6 +26,7 @@ final class Settings {
         s.haptics = p.getBoolean("haptics", true);
         s.landscape = p.getBoolean("landscape", false);
         s.scrollLines = p.getInt("scrollLines", 1);
+        s.platform = p.getInt("platform", -1);
         return s;
     }
 
@@ -40,6 +42,7 @@ final class Settings {
                 .putBoolean("haptics", haptics)
                 .putBoolean("landscape", landscape)
                 .putInt("scrollLines", scrollLines)
+                .putInt("platform", platform)
                 .apply();
     }
 

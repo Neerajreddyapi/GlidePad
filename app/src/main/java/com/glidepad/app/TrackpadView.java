@@ -186,21 +186,23 @@ public class TrackpadView extends View {
                 scroll(dx, dy);
                 lastScrollTime = e.getEventTime();
             } else if (mode == PINCH) {
+                int zoom = platform().zoomMods; // ⌘ on Mac/iPad, Ctrl elsewhere, nothing on a TV
+                if (zoom == 0) return;
                 if (sp > stepSpan * ZOOM_STEP) {
                     stepSpan = sp;
-                    hid.key(Keys.CMD, Keys.EQUAL);
+                    hid.key(zoom, Keys.EQUAL);
                     feedback("Zoom in", HapticFeedbackConstants.CLOCK_TICK);
                 } else if (sp < stepSpan / ZOOM_STEP) {
                     stepSpan = sp;
-                    hid.key(Keys.CMD, Keys.MINUS);
+                    hid.key(zoom, Keys.MINUS);
                     feedback("Zoom out", HapticFeedbackConstants.CLOCK_TICK);
                 }
             }
             return;
         }
 
-        // Three fingers are left to the phone (screenshot, Mind Space). Four fingers = Mac gestures:
-        // swipes for Mission Control / App Exposé / desktops, spread or pinch for Show Desktop.
+        // Three fingers are left to the phone (screenshot, Mind Space). Four fingers = the connected
+        // system's gestures (Mission Control / Task View, desktops, show desktop); see Platform.
         if (travel > slopDp) mode = SWIPE; // never a tap or a pointer move
         if (maxPointers < 4 || n < 3) return; // tolerate one of the four fingers flickering
         swipeDx += dx;
@@ -211,24 +213,30 @@ public class TrackpadView extends View {
             if (Math.abs(spread) > SPREAD_DP && Math.abs(spread) > Math.hypot(swipeDx, swipeDy)) {
                 swipeFired = true;
                 mode = SWIPE;
-                hid.key(0, Keys.F11); // macOS "Show Desktop" (pressing again brings the windows back)
-                feedback(spread > 0 ? "Show Desktop" : "Show windows", HapticFeedbackConstants.CONTEXT_CLICK);
+                gesture(platform().spread); // pressing again brings the windows back
                 return;
             }
         }
         if (Math.abs(swipeDx) < SWIPE_DP && Math.abs(swipeDy) < SWIPE_DP) return;
         swipeFired = true;
+        Platform p = platform();
         if (Math.abs(swipeDx) > Math.abs(swipeDy)) {
-            // Like a Mac trackpad: swiping left reveals the desktop on the right.
-            if (swipeDx < 0) { hid.key(Keys.CTRL, Keys.RIGHT); feedback("Next desktop →", HapticFeedbackConstants.CONTEXT_CLICK); }
-            else { hid.key(Keys.CTRL, Keys.LEFT); feedback("← Previous desktop", HapticFeedbackConstants.CONTEXT_CLICK); }
-        } else if (swipeDy < 0) {
-            hid.key(Keys.CTRL, Keys.UP);
-            feedback("Mission Control", HapticFeedbackConstants.CONTEXT_CLICK);
+            // Like a trackpad: swiping left reveals the desktop on the right.
+            gesture(swipeDx < 0 ? p.swipeLeft : p.swipeRight);
         } else {
-            hid.key(Keys.CTRL, Keys.DOWN);
-            feedback("App Exposé", HapticFeedbackConstants.CONTEXT_CLICK);
+            gesture(swipeDy < 0 ? p.swipeUp : p.swipeDown);
         }
+    }
+
+    private Platform platform() { return Platform.get(settings.platform); }
+
+    private void gesture(Platform.Action a) {
+        if (a == null) {
+            feedback("No 4-finger gestures on " + platform().name, HapticFeedbackConstants.LONG_PRESS);
+            return;
+        }
+        a.send(hid);
+        feedback(a.label, HapticFeedbackConstants.CONTEXT_CLICK);
     }
 
     private void finishGesture(MotionEvent e) {
@@ -271,11 +279,12 @@ public class TrackpadView extends View {
 
     /**
      * Scrolling works in steps, like a mouse wheel: every {@code NOTCH_DP / scrollSpeed} of finger
-     * travel sends one step, and each step scrolls {@code scrollLines} lines on the Mac.
-     * With macOS "natural scrolling" (the default) the direction matches a real trackpad.
+     * travel sends one step, and each step scrolls {@code scrollLines} lines on the computer.
+     * Content follows the fingers like on a phone or trackpad. macOS and iPadOS flip the wheel
+     * themselves ("natural scrolling"); everywhere else we flip it here.
      */
     private void scroll(float dx, float dy) {
-        float dir = settings.reverseScroll ? -1 : 1;
+        float dir = (settings.reverseScroll ? -1 : 1) * (platform().naturalScroll ? 1 : -1);
         float notch = NOTCH_DP / settings.scrollSpeed;
         scrollAccY += -dy * dir;
         scrollAccX += dx * dir;
