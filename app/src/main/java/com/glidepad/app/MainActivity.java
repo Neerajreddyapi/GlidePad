@@ -44,7 +44,8 @@ import java.util.List;
 @SuppressLint("MissingPermission")
 public class MainActivity extends Activity implements HidManager.Listener {
 
-    private static final int REQ_PERMISSIONS = 1;
+    private static final int REQ_PERMISSIONS = 1, REQ_VISIBLE = 2;
+    private static final int VIS_ASK = 0, VIS_COUNTDOWN = 1, VIS_ENDED = 2, VIS_DENIED = 3;
     private static final int PANEL_NONE = 0, PANEL_KEYS = 1, PANEL_SHORTCUTS = 2, PANEL_MEDIA = 3;
 
     private interface FloatSetter { void set(float v); }
@@ -65,6 +66,10 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private TextView connectTitle, deviceChip;
     private FrameLayout picker; // "What are you connecting to?" screen
     private Insets lastBars;
+    private FrameLayout visPopup;          // "Make your phone visible" popup
+    private TextView makeVisibleBtn;
+    private long visibleUntil, visibleTotal; // uptime ms when Android stops showing the phone
+    private final android.os.Handler ticker = new android.os.Handler(android.os.Looper.getMainLooper());
     private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
     private TrackpadView pad;
     private KeyInputView keyInput;
@@ -158,7 +163,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         btnSettings.setOnClickListener(v -> setSettingsOpen(true));
         findViewById(R.id.statusPill).setOnClickListener(v -> setSettingsOpen(true));
         settingsOverlay.setOnClickListener(v -> setSettingsOpen(false));
-        findViewById(R.id.makeVisibleBtn).setOnClickListener(v -> makeVisible());
+        makeVisibleBtn = findViewById(R.id.makeVisibleBtn);
+        makeVisibleBtn.setOnClickListener(v -> makeVisible());
         enableBtn.setOnClickListener(v -> onEnableClicked());
         setupClickButton(findViewById(R.id.leftBtn), HidManager.BTN_LEFT);
         setupClickButton(findViewById(R.id.rightBtn), HidManager.BTN_RIGHT);
@@ -214,6 +220,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     @Override protected void onDestroy() {
         super.onDestroy();
+        ticker.removeCallbacks(tick);
         // Leaving the app (not just rotating/backgrounding) releases the Mac.
         if (isFinishing()) hid.stop();
     }
@@ -337,6 +344,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         }
         if (!connected && panel != PANEL_NONE) showPanel(PANEL_NONE);
         clickBar.setVisibility(connected && settings.clickButtons ? View.VISIBLE : View.GONE);
+        if (connected && visPopup != null) hideVisibilityPopup(); // the device found us: done
         if (connected) HidService.ensureRunning(this); // keeps the Mac connected while switching apps
         if (connected) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -412,9 +420,161 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     private void makeVisible() {
+        boolean visible = android.os.SystemClock.uptimeMillis() < visibleUntil;
+        showVisibilityPopup(visible ? VIS_COUNTDOWN : VIS_ASK);
+    }
+
+    /** Android's own yes/no prompt; apps can't make the phone discoverable without it. */
+    private void requestVisible() {
         Intent i = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
         i.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120);
-        startActivity(i);
+        try {
+            startActivityForResult(i, REQ_VISIBLE);
+        } catch (android.content.ActivityNotFoundException e) {
+            showVisibilityPopup(VIS_DENIED);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != REQ_VISIBLE) return;
+        if (result == RESULT_CANCELED) { showVisibilityPopup(VIS_DENIED); return; }
+        // Android returns how many seconds the phone stays visible.
+        visibleTotal = (result > 0 ? result : 120) * 1000L;
+        visibleUntil = android.os.SystemClock.uptimeMillis() + visibleTotal;
+        ticker.removeCallbacks(tick);
+        ticker.post(tick);
+        showVisibilityPopup(VIS_COUNTDOWN);
+    }
+
+    /** Keeps the button's "Visible · 1:42" label current and notices when time runs out. */
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            long left = visibleUntil - android.os.SystemClock.uptimeMillis();
+            if (left <= 0) {
+                makeVisibleBtn.setText("Make phone visible");
+                if (visPopup != null && !connected) showVisibilityPopup(VIS_ENDED);
+                return;
+            }
+            long secs = (left + 999) / 1000;
+            makeVisibleBtn.setText("Visible · " + secs / 60 + ":" + String.format("%02d", secs % 60));
+            ticker.postDelayed(this, 1000);
+        }
+    };
+
+    private void showVisibilityPopup(int state) {
+        FrameLayout root = findViewById(R.id.root);
+        boolean animate = visPopup == null;
+        if (visPopup != null) root.removeView(visPopup);
+
+        visPopup = new FrameLayout(this);
+        visPopup.setBackgroundColor(getColor(R.color.scrim));
+        visPopup.setClickable(true);
+        visPopup.setOnClickListener(v -> hideVisibilityPopup());
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setBackgroundResource(R.drawable.popup_card);
+        card.setPadding(px(24), px(28), px(24), px(20));
+        card.setClickable(true); // taps on the card don't close it
+        card.setElevation(px(12));
+
+        Platform p = platform();
+        String phone = "<b>" + Html.escapeHtml(hid.phoneName()) + "</b>";
+        String noun = Html.escapeHtml(p.noun);
+        String title, body, primary, secondary;
+        Runnable primaryAction;
+        if (state == VIS_COUNTDOWN) {
+            CountdownRing ring = new CountdownRing(this);
+            ring.start(visibleUntil, visibleTotal);
+            card.addView(ring);
+            title = "Your phone is visible";
+            body = p.pairStep2 + " " + String.format(p.pairStep3, phone);
+            primary = "Done";
+            secondary = null;
+            primaryAction = this::hideVisibilityPopup;
+        } else {
+            card.addView(bluetoothBadge(state == VIS_ASK ? R.color.accent : R.color.text3));
+            if (state == VIS_ASK) {
+                title = "Make your phone visible";
+                body = "So your " + noun + " can find " + phone + " in its Bluetooth list. Android will ask you to "
+                        + "allow it, and your phone stays visible for 2 minutes.";
+                primary = "Allow";
+            } else if (state == VIS_ENDED) {
+                title = "Time's up";
+                body = "Your phone is no longer visible. Make it visible again, then connect from your " + noun
+                        + "'s Bluetooth settings within 2 minutes.";
+                primary = "Make visible again";
+            } else {
+                title = "Phone isn't visible";
+                body = "Android needs your OK before other devices can see this phone. Try again and tap <b>Allow</b>.";
+                primary = "Try again";
+            }
+            secondary = state == VIS_ASK ? "Not now" : "Close";
+            primaryAction = this::requestVisible;
+        }
+
+        TextView t = text(title, 21, R.color.text);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, px(16), 0, px(8));
+        card.addView(t);
+        TextView b = text("", 15, R.color.text2);
+        b.setText(Html.fromHtml(body, Html.FROM_HTML_MODE_COMPACT));
+        b.setGravity(Gravity.CENTER);
+        b.setLineSpacing(0, 1.2f);
+        card.addView(b);
+
+        TextView go = text(primary, 16, android.R.color.white);
+        go.setBackgroundResource(R.drawable.btn_primary);
+        go.setGravity(Gravity.CENTER);
+        go.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        go.setOnClickListener(v -> { haptic(v); primaryAction.run(); });
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(50));
+        glp.topMargin = px(22);
+        card.addView(go, glp);
+        if (secondary != null) {
+            TextView no = text(secondary, 15, R.color.text2);
+            no.setGravity(Gravity.CENTER);
+            no.setPadding(0, px(14), 0, px(6));
+            no.setOnClickListener(v -> hideVisibilityPopup());
+            card.addView(no, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        int width = Math.min(px(380), getResources().getDisplayMetrics().widthPixels - px(40));
+        visPopup.addView(card, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        root.addView(visPopup, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (animate) {
+            visPopup.setAlpha(0f);
+            visPopup.animate().alpha(1f).setDuration(160).start();
+            card.setScaleX(0.94f);
+            card.setScaleY(0.94f);
+            card.animate().scaleX(1f).scaleY(1f).setDuration(220)
+                    .setInterpolator(new DecelerateInterpolator(2f)).start();
+        }
+        updateBackHandling();
+    }
+
+    private View bluetoothBadge(int colorRes) {
+        FrameLayout badge = new FrameLayout(this);
+        badge.setBackgroundResource(R.drawable.step_num);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_bluetooth);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(colorRes)));
+        badge.addView(icon, new FrameLayout.LayoutParams(px(34), px(34), Gravity.CENTER));
+        badge.setLayoutParams(new LinearLayout.LayoutParams(px(72), px(72)));
+        return badge;
+    }
+
+    private void hideVisibilityPopup() {
+        if (visPopup == null) return;
+        View v = visPopup;
+        visPopup = null;
+        v.animate().alpha(0f).setDuration(140)
+                .withEndAction(() -> ((ViewGroup) findViewById(R.id.root)).removeView(v)).start();
+        updateBackHandling();
     }
 
     private void buildSteps() {
@@ -517,7 +677,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         addKeyChip("↑", 0, Keys.UP);
         addKeyChip("↓", 0, Keys.DOWN);
         addKeyChip("→", 0, Keys.RIGHT);
-        addKeyChip("⌦", 0, Keys.DELETE);
+        boolean apple = p.id == Platform.MAC || p.id == Platform.IPAD;
+        addKeyChip(apple ? "⌦" : "Del", 0, Keys.DELETE);
     }
 
     /** modifier != 0 makes a sticky modifier toggle; otherwise it sends {@code code}. */
@@ -1055,6 +1216,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     // ---------------------------------------------------------- back, insets
 
     private boolean handleBack() {
+        if (visPopup != null) { hideVisibilityPopup(); return true; }
         if (picker != null && settings.platform >= 0) { hidePicker(); return true; }
         if (settingsOpen) { setSettingsOpen(false); return true; }
         if (panel != PANEL_NONE) { showPanel(PANEL_NONE); return true; }
@@ -1066,7 +1228,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     private void updateBackHandling() {
         if (Build.VERSION.SDK_INT < 33) return; // onBackPressed covers older versions
-        boolean need = settingsOpen || panel != PANEL_NONE || connected || (picker != null && settings.platform >= 0);
+        boolean need = visPopup != null || settingsOpen || panel != PANEL_NONE || connected || (picker != null && settings.platform >= 0);
         OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
         if (need && backCallback == null) {
             backCallback = this::handleBack;

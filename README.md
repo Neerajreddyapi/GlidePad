@@ -25,7 +25,7 @@ Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac, Win
 - **Two-finger gestures:** two-finger tap to right-click, two-finger scroll in any direction with momentum, and pinch to zoom (⌘+ / ⌘−).
 - **Works with your device:** pick Mac, Windows PC, Chromebook, iPad, Linux, Smart TV or Other, and Glide Pad sets up the right shortcuts, gestures, zoom keys and key names.
 - **Four-finger gestures** (Mac and Windows): Mission Control / Task View, App Exposé / show desktop, switching desktops, and spread to show the desktop.
-- **Keyboard:** type with your phone's keyboard in portrait, or with a built-in Mac-style keyboard in landscape that leaves half the trackpad free. A key row adds esc, tab, arrows and ⌘ ⌥ ⌃ ⇧.
+- **Keyboard:** type with your phone's keyboard in portrait, or with a built-in keyboard in landscape that leaves half the trackpad free. A key row adds esc, tab, arrows and ⌘ ⌥ ⌃ ⇧.
 - **Shortcuts:** one tap for the everyday shortcuts of your device (Spotlight or Start, app switcher, copy, paste, undo, screenshot, lock screen and more), or a remote-style panel for TVs.
 - **Media keys:** play/pause, next, previous, volume and mute.
 - **Landscape mode:** a wide, full-screen trackpad. Panels and settings slide up on the right half.
