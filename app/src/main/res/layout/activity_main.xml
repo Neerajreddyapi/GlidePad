@@ -207,6 +207,19 @@
                                     android:layout_width="match_parent"
                                     android:layout_marginTop="18dp"
                                     android:text="Make phone visible" />
+
+                            <TextView
+                                android:id="@+id/findBtn"
+                                android:layout_width="match_parent"
+                                android:layout_height="48dp"
+                                android:layout_marginTop="10dp"
+                                android:background="@drawable/btn_secondary"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:fontFamily="sans-serif-medium"
+                                android:gravity="center"
+                                android:textColor="@color/text"
+                                android:textSize="15sp" />
                             </LinearLayout>
 
                             <LinearLayout

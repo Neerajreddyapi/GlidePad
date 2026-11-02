@@ -71,6 +71,26 @@ final class Platform {
 
     boolean hasGestures() { return swipeUp != null || swipeLeft != null || spread != null; }
 
+    /**
+     * TVs rarely find a phone from their own "add accessory" screen (the phone still introduces
+     * itself as a phone), so for them we pair from this phone first.
+     */
+    boolean scanFirst() { return id == TV; }
+
+    /** How to put the other device into pairing mode, shown above the nearby-devices search. */
+    String scanHint() {
+        switch (id) {
+            case MAC: return "Keep <b>System Settings → Bluetooth</b> open on the Mac so it can be found.";
+            case WINDOWS: return "On the PC, open <b>Settings → Bluetooth &amp; devices</b> so it can be found.";
+            case CHROMEBOOK: return "On the Chromebook, open <b>Settings → Bluetooth</b> so it can be found.";
+            case IPAD: return "On the iPad, open <b>Settings → Bluetooth</b> so it can be found.";
+            case LINUX: return "On the computer, open <b>Settings → Bluetooth</b> so it can be found.";
+            case TV: return "On the TV, open <b>Settings → Remotes &amp; accessories</b> (or <b>Bluetooth</b>) and choose "
+                    + "<b>Add accessory</b> or <b>Pair</b>, so it can be found.";
+            default: return "Open the device's <b>Bluetooth</b> settings so it can be found.";
+        }
+    }
+
     // ------------------------------------------------------------------ data
 
     private static final int C = Keys.CTRL, S = Keys.SHIFT, A = Keys.ALT, G = Keys.CMD; // G = ⌘ / Win / Search / Super

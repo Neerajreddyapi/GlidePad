@@ -123,28 +123,125 @@ public final class HidManager {
         return n == null || n.isEmpty() ? d.getAddress() : n;
     }
 
-    /** Paired devices that could be a computer, tablet or TV, last-used first. */
-    public List<BluetoothDevice> pairedComputers() {
+    public BluetoothDevice host() { return host; }
+
+    public boolean isLastUsed(BluetoothDevice d) { return d != null && d.getAddress().equals(prefs.getString("last", null)); }
+
+    /**
+     * Every paired device: the connected one first, then the last used, then things that can use
+     * a keyboard and mouse (computers, tablets, TVs), then everything else (phones, headphones…).
+     */
+    public List<BluetoothDevice> pairedDevices() {
         List<BluetoothDevice> out = new ArrayList<>();
         if (adapter == null || !adapter.isEnabled()) return out;
         Set<BluetoothDevice> bonded = adapter.getBondedDevices();
         if (bonded == null) return out;
-        String last = prefs.getString("last", null);
-        for (BluetoothDevice d : bonded) {
-            int major = d.getBluetoothClass() == null ? 0x1F00 : d.getBluetoothClass().getMajorDeviceClass();
-            int cls = d.getBluetoothClass() == null ? 0 : d.getBluetoothClass().getDeviceClass();
-            boolean computerLike = major == android.bluetooth.BluetoothClass.Device.Major.COMPUTER
-                    || major == android.bluetooth.BluetoothClass.Device.Major.MISC
-                    || major == android.bluetooth.BluetoothClass.Device.Major.UNCATEGORIZED
-                    // smart TVs, smart monitors and TV boxes
-                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_VIDEO_DISPLAY_AND_LOUDSPEAKER
-                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_VIDEO_MONITOR
-                    || cls == android.bluetooth.BluetoothClass.Device.AUDIO_VIDEO_SET_TOP_BOX;
-            if (!computerLike) continue;
-            if (d.getAddress().equals(last)) out.add(0, d); else out.add(d);
-        }
+        out.addAll(bonded);
+        out.sort((a, b) -> Integer.compare(rank(a), rank(b)) != 0 ? Integer.compare(rank(a), rank(b))
+                : String.valueOf(nameOf(a)).compareToIgnoreCase(String.valueOf(nameOf(b))));
         return out;
     }
+
+    private int rank(BluetoothDevice d) {
+        if (d.equals(host)) return 0;
+        if (d.equals(connecting)) return 1;
+        if (isLastUsed(d)) return 2;
+        return DeviceKind.of(d).canHost ? 3 : 4;
+    }
+
+    // ------------------------------------------------- find & pair from the phone
+
+    private final List<BluetoothDevice> nearby = new ArrayList<>();
+    private volatile boolean scanning, scanReceiverOn;
+    private volatile BluetoothDevice pairing, pairFailed;
+
+    public boolean isScanning() { return scanning; }
+
+    /** Devices found by the current search that aren't paired yet, computers and TVs first. */
+    public List<BluetoothDevice> nearbyDevices() {
+        List<BluetoothDevice> out = new ArrayList<>(nearby);
+        out.sort((a, b) -> Boolean.compare(!DeviceKind.of(a).canHost, !DeviceKind.of(b).canHost));
+        return out;
+    }
+
+    public BluetoothDevice pairingDevice() { return pairing; }
+
+    public BluetoothDevice pairFailedDevice() { return pairFailed; }
+
+    /** Starts a Bluetooth search. The other device must be in pairing mode to show up. */
+    public boolean startScan() {
+        if (adapter == null || !adapter.isEnabled()) return false;
+        nearby.clear();
+        pairFailed = null;
+        if (!scanReceiverOn) {
+            IntentFilter f = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+            f.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+            if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(scanReceiver, f, Context.RECEIVER_EXPORTED);
+            else app.registerReceiver(scanReceiver, f);
+            scanReceiverOn = true;
+        }
+        if (adapter.isDiscovering()) adapter.cancelDiscovery();
+        scanning = adapter.startDiscovery();
+        // Safety net in case the "search finished" broadcast never arrives.
+        main.removeCallbacks(scanTimeout);
+        if (scanning) main.postDelayed(scanTimeout, 20_000);
+        changed();
+        return scanning;
+    }
+
+    private final Runnable scanTimeout = this::onScanTimeout;
+
+    private void onScanTimeout() {
+        if (!scanning) return;
+        if (adapter != null && adapter.isDiscovering()) adapter.cancelDiscovery();
+        scanning = false;
+        changed();
+    }
+
+    public void stopScan() {
+        main.removeCallbacks(scanTimeout);
+        if (adapter != null && adapter.isDiscovering()) adapter.cancelDiscovery();
+        scanning = false;
+        if (scanReceiverOn) {
+            try { app.unregisterReceiver(scanReceiver); } catch (IllegalArgumentException ignored) { }
+            scanReceiverOn = false;
+        }
+        changed();
+    }
+
+    /** Pairs from this phone (Android shows the code), then connects as soon as pairing finishes. */
+    public void pairAndConnect(BluetoothDevice d) {
+        if (d == null) return;
+        if (adapter != null && adapter.isDiscovering()) adapter.cancelDiscovery();
+        scanning = false;
+        pairFailed = null;
+        if (d.getBondState() == BluetoothDevice.BOND_BONDED) { connect(d); return; }
+        pairing = d;
+        if (!d.createBond()) { pairing = null; pairFailed = d; }
+        changed();
+    }
+
+    @SuppressWarnings("deprecation")
+    private static BluetoothDevice deviceOf(Intent i) {
+        return Build.VERSION.SDK_INT >= 33
+                ? i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice.class)
+                : i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+    }
+
+    private final BroadcastReceiver scanReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (BluetoothDevice.ACTION_FOUND.equals(i.getAction())) {
+                BluetoothDevice d = deviceOf(i);
+                // Unnamed devices are mostly beacons and gadgets nobody wants to pick.
+                if (d == null || d.getName() == null || d.getBondState() == BluetoothDevice.BOND_BONDED || nearby.contains(d)) return;
+                nearby.add(d);
+                changed();
+            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(i.getAction())) {
+                scanning = false;
+                changed();
+            }
+        }
+    };
 
     public void addListener(Listener l) { listeners.addIfAbsent(l); }
 
@@ -158,7 +255,10 @@ public final class HidManager {
         if (started) return;
         started = true;
         IntentFilter f = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(btReceiver, f, Context.RECEIVER_NOT_EXPORTED);
+        f.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        // EXPORTED: these come from Android's Bluetooth service, which isn't the "system" UID that
+        // NOT_EXPORTED receivers accept. Only Android can send these protected broadcasts anyway.
+        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(btReceiver, f, Context.RECEIVER_EXPORTED);
         else app.registerReceiver(btReceiver, f);
         openProxy();
     }
@@ -167,6 +267,7 @@ public final class HidManager {
         if (!started) return;
         started = false;
         try { app.unregisterReceiver(btReceiver); } catch (IllegalArgumentException ignored) { }
+        stopScan();
         BluetoothHidDevice h = hid;
         if (h != null) {
             if (registered) h.unregisterApp();
@@ -273,6 +374,17 @@ public final class HidManager {
 
     private final BroadcastReceiver btReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
+            if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(i.getAction())) {
+                BluetoothDevice d = deviceOf(i);
+                int bond = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE);
+                if (d != null && d.equals(pairing)) {
+                    if (bond == BluetoothDevice.BOND_BONDED) { pairing = null; connect(d); }
+                    else if (bond == BluetoothDevice.BOND_NONE) { pairing = null; pairFailed = d; }
+                }
+                nearby.remove(d != null && bond == BluetoothDevice.BOND_BONDED ? d : null);
+                changed();
+                return;
+            }
             int s = i.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
             if (s == BluetoothAdapter.STATE_ON) {
                 openProxy();

@@ -2,6 +2,17 @@
 
 All notable changes to Glide Pad are listed here. Versions follow `versionName` in `app/build.gradle.kts`.
 
+## [1.2] - 2026-11-02
+
+### Added
+- Pair from your phone: **Find nearby devices** searches for computers and TVs in pairing mode. Tap one, confirm the code, and Glide Pad connects and opens the trackpad. This is now the recommended way for smart TVs, which rarely find a phone from their own "add accessory" screen.
+- Paired devices show an icon for what each one is (laptop, desktop, tablet, TV, TV box) with its name and status: Connected, Connecting… or last used. Phones, headphones and watches fold away under "other devices".
+- The connected device's icon appears in the top pill.
+- Settings lists your paired devices, so you can switch devices or pair a new one without disconnecting first.
+
+### Fixed
+- Glide Pad now hears Android's Bluetooth updates (search results, pairing and Bluetooth on/off) on newer Android versions.
+
 ## [1.1] - 2026-11-02
 
 ### Added

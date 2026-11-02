@@ -37,7 +37,9 @@ Turn your Android phone into a Bluetooth trackpad and keyboard for your Mac, Win
 
 1. Install Glide Pad from [Google Play](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad). It's in closed testing now, with the public launch coming soon. Glide Pad is only distributed through Google Play; to build it yourself, see the [development setup](#development-setup).
 2. Open Glide Pad, allow Bluetooth, and tap **Make phone visible**.
-3. Choose what you're connecting to, then follow the steps on screen. On a Mac, for example: **System Settings → Bluetooth**, click **Connect** next to your phone, and accept the code on both screens. On Windows: **Settings → Bluetooth & devices → Add device → Bluetooth**.
+3. Choose what you're connecting to, then pair either way:
+   - **Find nearby devices** (best for smart TVs): put the other device in pairing mode, then pick it in the app and confirm the code.
+   - **Make phone visible**, then connect from the other device's Bluetooth settings. Follow the steps on screen. On a Mac, for example: **System Settings → Bluetooth**, click **Connect** next to your phone, and accept the code on both screens. On Windows: **Settings → Bluetooth & devices → Add device → Bluetooth**.
 
 Paired the phone with the Mac before? Remove it on both devices first, then pair again so the Mac sees it as a keyboard and mouse.
 

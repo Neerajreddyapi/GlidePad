@@ -44,7 +44,7 @@ import java.util.List;
 @SuppressLint("MissingPermission")
 public class MainActivity extends Activity implements HidManager.Listener {
 
-    private static final int REQ_PERMISSIONS = 1, REQ_VISIBLE = 2;
+    private static final int REQ_PERMISSIONS = 1, REQ_VISIBLE = 2, REQ_SCAN = 3;
     private static final int VIS_ASK = 0, VIS_COUNTDOWN = 1, VIS_ENDED = 2, VIS_DENIED = 3;
     private static final int PANEL_NONE = 0, PANEL_KEYS = 1, PANEL_SHORTCUTS = 2, PANEL_MEDIA = 3;
 
@@ -67,7 +67,13 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private FrameLayout picker; // "What are you connecting to?" screen
     private Insets lastBars;
     private FrameLayout visPopup;          // "Make your phone visible" popup
-    private TextView makeVisibleBtn;
+    private TextView makeVisibleBtn, findBtn;
+    private ImageView statusIcon;          // what the connected device is, in the top pill
+    private FrameLayout scanPopup;         // "Find nearby devices"
+    private LinearLayout scanList, settingsDevices;
+    private TextView scanStatus, scanAgain;
+    private android.widget.ScrollView scanScroll;
+    private boolean showOtherDevices;
     private long visibleUntil, visibleTotal; // uptime ms when Android stops showing the phone
     private final android.os.Handler ticker = new android.os.Handler(android.os.Looper.getMainLooper());
     private ImageButton btnRotate, btnKeyboard, btnShortcuts, btnMedia, btnSettings;
@@ -163,8 +169,14 @@ public class MainActivity extends Activity implements HidManager.Listener {
         btnSettings.setOnClickListener(v -> setSettingsOpen(true));
         findViewById(R.id.statusPill).setOnClickListener(v -> setSettingsOpen(true));
         settingsOverlay.setOnClickListener(v -> setSettingsOpen(false));
-        makeVisibleBtn = findViewById(R.id.makeVisibleBtn);
-        makeVisibleBtn.setOnClickListener(v -> makeVisible());
+        makeVisibleBtn = findViewById(R.id.makeVisibleBtn); // its job depends on the device: see buildSteps()
+        findBtn = findViewById(R.id.findBtn);
+        LinearLayout pill = findViewById(R.id.statusPill);
+        statusIcon = new ImageView(this);
+        LinearLayout.LayoutParams sil = new LinearLayout.LayoutParams(px(18), px(18));
+        sil.leftMargin = px(9);
+        pill.addView(statusIcon, 1, sil);
+        statusIcon.setVisibility(View.GONE);
         enableBtn.setOnClickListener(v -> onEnableClicked());
         setupClickButton(findViewById(R.id.leftBtn), HidManager.BTN_LEFT);
         setupClickButton(findViewById(R.id.rightBtn), HidManager.BTN_RIGHT);
@@ -226,6 +238,12 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == REQ_SCAN) {
+            if (missing(scanPermissions()).isEmpty()) findNearby();
+            else showScanPopup("Glide Pad needs the <b>Nearby devices</b> permission to search. You can still use "
+                    + "<b>Make phone visible</b> and connect from the other device.");
+            return;
+        }
         if (hasPermissions()) hid.start();
         render();
     }
@@ -345,6 +363,13 @@ public class MainActivity extends Activity implements HidManager.Listener {
         if (!connected && panel != PANEL_NONE) showPanel(PANEL_NONE);
         clickBar.setVisibility(connected && settings.clickButtons ? View.VISIBLE : View.GONE);
         if (connected && visPopup != null) hideVisibilityPopup(); // the device found us: done
+        if (connected && scanPopup != null) hideScanPopup();
+        if (scanPopup != null) refreshScanPopup();
+        statusIcon.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (connected) {
+            statusIcon.setImageResource(DeviceKind.of(hid.host()).icon);
+            statusIcon.setImageTintList(ColorStateList.valueOf(getColor(R.color.text2)));
+        }
         if (connected) HidService.ensureRunning(this); // keeps the Mac connected while switching apps
         if (connected) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -453,12 +478,11 @@ public class MainActivity extends Activity implements HidManager.Listener {
         @Override public void run() {
             long left = visibleUntil - android.os.SystemClock.uptimeMillis();
             if (left <= 0) {
-                makeVisibleBtn.setText("Make phone visible");
+                refreshVisibleLabel();
                 if (visPopup != null && !connected) showVisibilityPopup(VIS_ENDED);
                 return;
             }
-            long secs = (left + 999) / 1000;
-            makeVisibleBtn.setText("Visible · " + secs / 60 + ":" + String.format("%02d", secs % 60));
+            refreshVisibleLabel();
             ticker.postDelayed(this, 1000);
         }
     };
@@ -577,13 +601,45 @@ public class MainActivity extends Activity implements HidManager.Listener {
         updateBackHandling();
     }
 
+    /**
+     * Two ways to pair: make this phone visible and connect from the other device (best for
+     * computers), or find the other device from this phone (best for TVs, which rarely find a phone
+     * from their own "add accessory" screen). The recommended one gets the big button.
+     */
     private void buildSteps() {
         steps.removeAllViews();
         String phone = Html.escapeHtml(hid.phoneName());
-        steps.addView(step(1, "Tap <b>Make phone visible</b> below."));
         Platform p = platform();
-        steps.addView(step(2, p.pairStep2));
-        steps.addView(step(3, String.format(p.pairStep3, phone)));
+        String noun = Html.escapeHtml(p.noun);
+        if (p.scanFirst()) {
+            steps.addView(step(1, "Put your " + noun + " in pairing mode. " + p.scanHint()));
+            steps.addView(step(2, "Tap <b>Find nearby devices</b> below and choose your " + noun + "."));
+            steps.addView(step(3, "Accept the code on both screens. The trackpad opens by itself."));
+            makeVisibleBtn.setText("Find nearby devices");
+            makeVisibleBtn.setOnClickListener(v -> findNearby());
+            findBtn.setOnClickListener(v -> makeVisible());
+        } else {
+            steps.addView(step(1, "Tap <b>Make phone visible</b> below."));
+            steps.addView(step(2, p.pairStep2));
+            steps.addView(step(3, String.format(p.pairStep3, phone)));
+            makeVisibleBtn.setOnClickListener(v -> makeVisible());
+            findBtn.setText("Or find your " + p.noun + " from this phone");
+            findBtn.setOnClickListener(v -> findNearby());
+        }
+        refreshVisibleLabel();
+    }
+
+    /** The "make visible" button shows the time left while the phone is visible. */
+    private void refreshVisibleLabel() {
+        boolean tv = platform().scanFirst();
+        TextView b = tv ? findBtn : makeVisibleBtn;
+        long left = visibleUntil - android.os.SystemClock.uptimeMillis();
+        if (left > 0) {
+            long secs = (left + 999) / 1000;
+            b.setText("Visible · " + secs / 60 + ":" + String.format("%02d", secs % 60));
+        } else {
+            b.setText(tv ? "Or make this phone visible" : "Make phone visible");
+        }
     }
 
     private View step(int n, String html) {
@@ -605,30 +661,219 @@ public class MainActivity extends Activity implements HidManager.Listener {
         return row;
     }
 
-    private void buildPairedList() {
-        pairedList.removeAllViews();
-        List<BluetoothDevice> devices = hid.pairedComputers();
-        if (devices.isEmpty()) {
+    private void buildPairedList() { fillDeviceRows(pairedList, true); }
+
+    /**
+     * Paired devices with an icon for what each one is, its name and status. Things that can use a
+     * trackpad come first; phones, headphones and watches fold away under "other devices".
+     */
+    private void fillDeviceRows(LinearLayout box, boolean emptyHint) {
+        box.removeAllViews();
+        List<BluetoothDevice> main = new ArrayList<>(), other = new ArrayList<>();
+        for (BluetoothDevice d : hid.pairedDevices())
+            (DeviceKind.of(d).canHost || d.equals(hid.host()) ? main : other).add(d);
+        if (main.isEmpty() && emptyHint) {
             TextView none = text("None yet. Pair your " + platform().noun + " using the steps above.", 14, R.color.text3);
             none.setPadding(0, px(12), 0, px(10));
-            pairedList.addView(none);
+            box.addView(none);
+        }
+        for (BluetoothDevice d : main) box.addView(deviceRow(d));
+        if (!other.isEmpty()) {
+            TextView toggle = text((showOtherDevices ? "Hide" : "Show") + " other devices (" + other.size() + ")", 14, R.color.accent);
+            toggle.setPadding(0, px(12), 0, px(8));
+            toggle.setOnClickListener(v -> { showOtherDevices = !showOtherDevices; render(); });
+            box.addView(toggle);
+            if (showOtherDevices) for (BluetoothDevice d : other) box.addView(deviceRow(d));
+        }
+    }
+
+    private View deviceRow(BluetoothDevice d) {
+        DeviceKind k = DeviceKind.of(d);
+        boolean isHost = d.equals(hid.host()), busy = d.equals(hid.connectingDevice());
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, px(10), 0, px(10));
+        row.addView(deviceIcon(k, isHost));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(px(14), 0, px(10), 0);
+        TextView name = text(HidManager.nameOf(d), 16, R.color.text);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        texts.addView(name);
+        String sub = isHost ? "Connected" : busy ? "Connecting…" : hid.isLastUsed(d) ? k.label + " · last used" : k.label;
+        texts.addView(text(sub, 13, isHost ? R.color.green : busy ? R.color.amber : R.color.text3));
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView btn = smallButton(isHost ? "Disconnect" : busy ? "Connecting…" : "Connect");
+        btn.setEnabled(!busy);
+        btn.setOnClickListener(v -> { if (isHost) hid.disconnect(); else hid.connect(d); });
+        row.addView(btn);
+        return row;
+    }
+
+    /** A round badge with the device's icon; green when it's the connected one. */
+    private View deviceIcon(DeviceKind k, boolean on) {
+        FrameLayout badge = new FrameLayout(this);
+        badge.setBackgroundResource(R.drawable.step_num);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(k.icon);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(on ? R.color.green : k.canHost ? R.color.accent : R.color.text3)));
+        badge.addView(icon, new FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER));
+        badge.setLayoutParams(new LinearLayout.LayoutParams(px(42), px(42)));
+        return badge;
+    }
+
+    // ------------------------------------------------ find nearby devices (pair from the phone)
+
+    private String[] scanPermissions() {
+        if (Build.VERSION.SDK_INT >= 31)
+            return new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT};
+        return new String[]{Manifest.permission.ACCESS_FINE_LOCATION}; // Android 9–11 rule for Bluetooth searches
+    }
+
+    private List<String> missing(String[] perms) {
+        List<String> out = new ArrayList<>();
+        for (String p : perms) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) out.add(p);
+        return out;
+    }
+
+    /** Android 10 and 11 only return search results while Location is switched on. */
+    private boolean locationReady() {
+        if (Build.VERSION.SDK_INT < 29 || Build.VERSION.SDK_INT > 30) return true;
+        android.location.LocationManager lm = getSystemService(android.location.LocationManager.class);
+        return lm == null || lm.isLocationEnabled();
+    }
+
+    private void findNearby() {
+        List<String> need = missing(scanPermissions());
+        if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), REQ_SCAN); return; }
+        if (!locationReady()) {
+            showScanPopup("Turn on <b>Location</b> to search. On this version of Android, Bluetooth searches only "
+                    + "work while Location is on (Glide Pad never uses your location).");
             return;
         }
-        BluetoothDevice connecting = hid.connectingDevice();
-        for (BluetoothDevice d : devices) {
+        hid.startScan();
+        showScanPopup(null);
+    }
+
+    private void showScanPopup(String problem) {
+        FrameLayout root = findViewById(R.id.root);
+        boolean animate = scanPopup == null;
+        if (scanPopup != null) root.removeView(scanPopup);
+        scanPopup = new FrameLayout(this);
+        scanPopup.setBackgroundColor(getColor(R.color.scrim));
+        scanPopup.setClickable(true);
+        scanPopup.setOnClickListener(v -> hideScanPopup());
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundResource(R.drawable.popup_card);
+        card.setPadding(px(22), px(24), px(22), px(16));
+        card.setClickable(true);
+        card.setElevation(px(12));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_search);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(R.color.accent)));
+        head.addView(icon, new LinearLayout.LayoutParams(px(24), px(24)));
+        TextView title = text("Find nearby devices", 20, R.color.text);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setPadding(px(12), 0, 0, 0);
+        head.addView(title);
+        card.addView(head);
+
+        TextView hint = text("", 14, R.color.text2);
+        hint.setText(Html.fromHtml(problem != null ? problem : platform().scanHint(), Html.FROM_HTML_MODE_COMPACT));
+        hint.setLineSpacing(0, 1.2f);
+        hint.setPadding(0, px(10), 0, px(6));
+        card.addView(hint);
+
+        scanStatus = text("", 13, R.color.text3);
+        scanStatus.setPadding(0, px(4), 0, px(4));
+        card.addView(scanStatus);
+        scanScroll = new android.widget.ScrollView(this);
+        scanList = new LinearLayout(this);
+        scanList.setOrientation(LinearLayout.VERTICAL);
+        scanScroll.addView(scanList);
+        card.addView(scanScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0));
+
+        scanAgain = text("Search again", 16, android.R.color.white);
+        scanAgain.setBackgroundResource(R.drawable.btn_primary);
+        scanAgain.setGravity(Gravity.CENTER);
+        scanAgain.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        scanAgain.setOnClickListener(v -> { haptic(v); findNearby(); });
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(50));
+        glp.topMargin = px(14);
+        card.addView(scanAgain, glp);
+        TextView close = text("Close", 15, R.color.text2);
+        close.setGravity(Gravity.CENTER);
+        close.setPadding(0, px(14), 0, px(6));
+        close.setOnClickListener(v -> hideScanPopup());
+        card.addView(close, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        int width = Math.min(px(400), getResources().getDisplayMetrics().widthPixels - px(32));
+        scanPopup.addView(card, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        root.addView(scanPopup, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (problem != null) { scanStatus.setVisibility(View.GONE); scanAgain.setText(problem.contains("Location") ? "Search again" : "Allow and search"); }
+        else refreshScanPopup();
+        if (animate) {
+            scanPopup.setAlpha(0f);
+            scanPopup.animate().alpha(1f).setDuration(160).start();
+            card.setScaleX(0.94f);
+            card.setScaleY(0.94f);
+            card.animate().scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new DecelerateInterpolator(2f)).start();
+        }
+        updateBackHandling();
+    }
+
+    /** Keeps the search results and their pairing / connecting status up to date. */
+    private void refreshScanPopup() {
+        if (scanPopup == null || scanList == null || scanStatus.getVisibility() != View.VISIBLE) return;
+        List<BluetoothDevice> found = hid.nearbyDevices();
+        String noun = platform().noun;
+        scanStatus.setText(hid.isScanning() ? "Searching… keep your " + noun + " in pairing mode."
+                : found.isEmpty() ? "Nothing found yet. Check that your " + noun + " is in pairing mode, then search again."
+                : "Tap your " + noun + " to pair. You'll confirm a code on both screens.");
+        scanList.removeAllViews();
+        BluetoothDevice pairing = hid.pairingDevice(), failed = hid.pairFailedDevice(), connecting = hid.connectingDevice();
+        for (BluetoothDevice d : found) {
+            DeviceKind k = DeviceKind.of(d);
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(0, px(10), 0, px(10));
+            row.setPadding(0, px(8), 0, px(8));
+            row.setBackgroundResource(android.R.drawable.list_selector_background);
+            row.addView(deviceIcon(k, false));
+            LinearLayout texts = new LinearLayout(this);
+            texts.setOrientation(LinearLayout.VERTICAL);
+            texts.setPadding(px(14), 0, 0, 0);
             TextView name = text(HidManager.nameOf(d), 16, R.color.text);
             name.setSingleLine(true);
-            row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-            boolean busy = d.equals(connecting);
-            TextView btn = smallButton(busy ? "Connecting…" : "Connect");
-            btn.setEnabled(!busy);
-            btn.setOnClickListener(v -> hid.connect(d));
-            row.addView(btn);
-            pairedList.addView(row);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            texts.addView(name);
+            boolean isPairing = d.equals(pairing), isConnecting = d.equals(connecting), isFailed = d.equals(failed);
+            texts.addView(text(isPairing ? "Pairing… check both screens" : isConnecting ? "Connecting…"
+                    : isFailed ? "Couldn't pair. Tap to try again" : k.label, 13,
+                    isPairing || isConnecting ? R.color.accent : isFailed ? R.color.red : R.color.text3));
+            row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            row.setOnClickListener(v -> { haptic(v); hid.pairAndConnect(d); });
+            scanList.addView(row);
         }
+        int h = Math.min(found.size() * px(58), px(290));
+        scanScroll.getLayoutParams().height = h;
+        scanScroll.requestLayout();
+        scanAgain.setVisibility(hid.isScanning() ? View.GONE : View.VISIBLE);
+    }
+
+    private void hideScanPopup() {
+        if (scanPopup == null) return;
+        hid.stopScan();
+        View v = scanPopup;
+        scanPopup = null;
+        v.animate().alpha(0f).setDuration(140)
+                .withEndAction(() -> ((ViewGroup) findViewById(R.id.root)).removeView(v)).start();
+        updateBackHandling();
     }
 
     // -------------------------------------------------------------- panels
@@ -907,6 +1152,14 @@ public class MainActivity extends Activity implements HidManager.Listener {
         settingsConnBtn.setOnClickListener(v -> { hid.disconnect(); setSettingsOpen(false); });
         conn.addView(settingsConnBtn);
         settingsContent.addView(conn);
+        settingsContent.addView(caption("PAIRED DEVICES"));
+        settingsDevices = new LinearLayout(this);
+        settingsDevices.setOrientation(LinearLayout.VERTICAL);
+        settingsContent.addView(settingsDevices);
+        TextView pairNew = text("+ Pair a new device", 15, R.color.accent);
+        pairNew.setPadding(0, px(10), 0, px(4));
+        pairNew.setOnClickListener(v -> { setSettingsOpen(false); findNearby(); });
+        settingsContent.addView(pairNew);
 
         settingsContent.addView(caption("DEVICE"));
         settingsContent.addView(deviceRow());
@@ -1007,6 +1260,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         if (settingsConnLabel == null) return;
         settingsConnLabel.setText(connected ? "Connected to " + hid.hostName() : "Not connected");
         settingsConnBtn.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (settingsDevices != null) fillDeviceRows(settingsDevices, false);
     }
 
     private View slider(String label, float value, FloatSetter setter) {
@@ -1216,6 +1470,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     // ---------------------------------------------------------- back, insets
 
     private boolean handleBack() {
+        if (scanPopup != null) { hideScanPopup(); return true; }
         if (visPopup != null) { hideVisibilityPopup(); return true; }
         if (picker != null && settings.platform >= 0) { hidePicker(); return true; }
         if (settingsOpen) { setSettingsOpen(false); return true; }
@@ -1228,7 +1483,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     private void updateBackHandling() {
         if (Build.VERSION.SDK_INT < 33) return; // onBackPressed covers older versions
-        boolean need = visPopup != null || settingsOpen || panel != PANEL_NONE || connected || (picker != null && settings.platform >= 0);
+        boolean need = scanPopup != null || visPopup != null || settingsOpen || panel != PANEL_NONE || connected || (picker != null && settings.platform >= 0);
         OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
         if (need && backCallback == null) {
             backCallback = this::handleBack;
