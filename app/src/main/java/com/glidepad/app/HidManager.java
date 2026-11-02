@@ -134,7 +134,8 @@ public final class HidManager {
     public List<BluetoothDevice> pairedDevices() {
         List<BluetoothDevice> out = new ArrayList<>();
         if (adapter == null || !adapter.isEnabled()) return out;
-        Set<BluetoothDevice> bonded = adapter.getBondedDevices();
+        Set<BluetoothDevice> bonded;
+        try { bonded = adapter.getBondedDevices(); } catch (SecurityException e) { return out; } // no permission yet
         if (bonded == null) return out;
         out.addAll(bonded);
         out.sort((a, b) -> Integer.compare(rank(a), rank(b)) != 0 ? Integer.compare(rank(a), rank(b))

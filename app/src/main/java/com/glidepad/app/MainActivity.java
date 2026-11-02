@@ -1260,7 +1260,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         if (settingsConnLabel == null) return;
         settingsConnLabel.setText(connected ? "Connected to " + hid.hostName() : "Not connected");
         settingsConnBtn.setVisibility(connected ? View.VISIBLE : View.GONE);
-        if (settingsDevices != null) fillDeviceRows(settingsDevices, false);
+        if (settingsDevices != null && hasPermissions()) fillDeviceRows(settingsDevices, false);
     }
 
     private View slider(String label, float value, FloatSetter setter) {
