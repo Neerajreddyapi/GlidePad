@@ -229,6 +229,19 @@ final class Platform {
 
     static Platform[] all() { return ALL; }
 
+    /** A best guess at what a paired device is, from its Bluetooth name and class; -1 if unsure. */
+    static int guess(String name, DeviceKind kind) {
+        String n = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
+        if (n.contains("ipad")) return IPAD;
+        if (n.contains("chromebook")) return CHROMEBOOK;
+        if (n.contains("macbook") || n.contains("imac") || n.contains("macintosh") || n.matches(".*\\bmac\\b.*")) return MAC;
+        if (kind == DeviceKind.TV || kind == DeviceKind.TV_BOX
+                || n.matches(".*\\b(tv|bravia|roku|chromecast|shield|fire ?stick|webos|tizen)\\b.*")) return TV;
+        if (n.matches("(desktop|laptop)-[a-z0-9]{4,}.*") || n.contains("windows") || n.contains("surface")) return WINDOWS;
+        if (n.contains("ubuntu") || n.contains("linux") || n.contains("fedora") || n.contains("debian")) return LINUX;
+        return -1;
+    }
+
     /** The chosen device, or Mac when nothing has been chosen yet. */
     static Platform get(int id) { return id >= 0 && id < ALL.length ? ALL[id] : ALL[MAC]; }
 }

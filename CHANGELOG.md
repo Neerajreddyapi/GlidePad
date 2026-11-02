@@ -8,7 +8,8 @@ All notable changes to Glide Pad are listed here. Versions follow `versionName` 
 - Pair from your phone: **Find nearby devices** searches for computers and TVs in pairing mode. Tap one, confirm the code, and Glide Pad connects and opens the trackpad. This is now the recommended way for smart TVs, which rarely find a phone from their own "add accessory" screen.
 - Paired devices show an icon for what each one is (laptop, desktop, tablet, TV, TV box) with its name and status: Connected, Connecting… or last used. Phones, headphones and watches fold away under "other devices".
 - The connected device's icon appears in the top pill.
-- Settings lists your paired devices, so you can switch devices or pair a new one without disconnecting first.
+- A **Devices** sheet: tap the connection pill at the top to see what's connected, switch to another paired device, or pair a new one. The gear now opens Settings only.
+- Switching devices switches the shortcuts too. Glide Pad remembers the device type for each paired device, and guesses it from the name the first time ("MacBook Air" is a Mac, "[TV] Samsung" is a Smart TV).
 
 ### Fixed
 - Glide Pad now hears Android's Bluetooth updates (search results, pairing and Bluetooth on/off) on newer Android versions.

@@ -35,6 +35,7 @@ import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -58,7 +59,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private float dp;
 
     private View content, connectPanel, settingsOverlay, settingsSheet, clickBar, statusDot, firstTimeCard, pairedCard, pairHint;
-    private TextView statusText, connectStatus, enableBtn, settingsConnLabel, settingsConnBtn;
+    private TextView statusText, connectStatus, enableBtn;
     private LinearLayout steps, pairedList, keyRowContent, shortcutPanel, mediaPanel, settingsContent;
     private View keyRow, workArea;
     private LinearLayout bottomDock, sideDock;
@@ -70,7 +71,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     private TextView makeVisibleBtn, findBtn;
     private ImageView statusIcon;          // what the connected device is, in the top pill
     private FrameLayout scanPopup;         // "Find nearby devices"
-    private LinearLayout scanList, settingsDevices;
+    private LinearLayout scanList;
     private TextView scanStatus, scanAgain;
     private android.widget.ScrollView scanScroll;
     private boolean showOtherDevices;
@@ -82,6 +83,11 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     private int panel = PANEL_NONE, stickyMods;
     private boolean imeWasVisible, settingsOpen, connected;
+    /** One bottom sheet, two jobs: the gear opens Settings, the connection pill opens Devices. */
+    private static final int SHEET_SETTINGS = 0, SHEET_DEVICES = 1;
+    private int sheetMode = SHEET_SETTINGS;
+    private LinearLayout devicesBox;
+    private String lastTargetAddr; // the device we last set the shortcuts up for
     private final List<TextView> modifierChips = new ArrayList<>();
     private OnBackInvokedCallback backCallback;
 
@@ -166,8 +172,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         btnKeyboard.setOnClickListener(v -> showPanel(panel == PANEL_KEYS ? PANEL_NONE : PANEL_KEYS));
         btnShortcuts.setOnClickListener(v -> showPanel(panel == PANEL_SHORTCUTS ? PANEL_NONE : PANEL_SHORTCUTS));
         btnMedia.setOnClickListener(v -> showPanel(panel == PANEL_MEDIA ? PANEL_NONE : PANEL_MEDIA));
-        btnSettings.setOnClickListener(v -> setSettingsOpen(true));
-        findViewById(R.id.statusPill).setOnClickListener(v -> setSettingsOpen(true));
+        btnSettings.setOnClickListener(v -> openSheet(SHEET_SETTINGS));
+        findViewById(R.id.statusPill).setOnClickListener(v -> openSheet(SHEET_DEVICES));
         settingsOverlay.setOnClickListener(v -> setSettingsOpen(false));
         makeVisibleBtn = findViewById(R.id.makeVisibleBtn); // its job depends on the device: see buildSteps()
         findBtn = findViewById(R.id.findBtn);
@@ -177,6 +183,13 @@ public class MainActivity extends Activity implements HidManager.Listener {
         sil.leftMargin = px(9);
         pill.addView(statusIcon, 1, sil);
         statusIcon.setVisibility(View.GONE);
+        ImageView chevron = new ImageView(this); // hints that the pill opens the device list
+        chevron.setImageResource(R.drawable.ic_expand);
+        chevron.setImageTintList(ColorStateList.valueOf(getColor(R.color.text3)));
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(px(16), px(16));
+        cl.leftMargin = px(2);
+        cl.setMarginEnd(-px(4));
+        pill.addView(chevron, cl);
         enableBtn.setOnClickListener(v -> onEnableClicked());
         setupClickButton(findViewById(R.id.leftBtn), HidManager.BTN_LEFT);
         setupClickButton(findViewById(R.id.rightBtn), HidManager.BTN_RIGHT);
@@ -184,6 +197,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         buildKeyRow();
         buildShortcuts();
         buildMedia();
+        if (b != null) sheetMode = b.getInt("sheetMode", SHEET_SETTINGS);
         buildSettings();
         dockPanels();
         layoutSettingsSheet();
@@ -222,6 +236,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
     @Override protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putBoolean("settingsOpen", settingsOpen);
+        out.putInt("sheetMode", sheetMode);
         out.putBoolean("pickerOpen", picker != null);
     }
 
@@ -425,7 +440,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
             buildSteps();
             buildPairedList();
         }
-        renderSettingsConnection(connected);
+        fillDevicesSheet();
+        // The device being connected wins over the one we're leaving, so the keys switch straight away.
+        followTarget(!perms ? null : hid.connectingDevice() != null ? hid.connectingDevice() : connected ? hid.host() : null);
         updateBackHandling();
     }
 
@@ -661,19 +678,21 @@ public class MainActivity extends Activity implements HidManager.Listener {
         return row;
     }
 
-    private void buildPairedList() { fillDeviceRows(pairedList, true); }
+    private void buildPairedList() { fillDeviceRows(pairedList, "None yet. Pair your " + platform().noun + " using the steps above."); }
 
     /**
      * Paired devices with an icon for what each one is, its name and status. Things that can use a
      * trackpad come first; phones, headphones and watches fold away under "other devices".
      */
-    private void fillDeviceRows(LinearLayout box, boolean emptyHint) {
+    private void fillDeviceRows(LinearLayout box, String emptyHint) {
         box.removeAllViews();
         List<BluetoothDevice> main = new ArrayList<>(), other = new ArrayList<>();
-        for (BluetoothDevice d : hid.pairedDevices())
-            (DeviceKind.of(d).canHost || d.equals(hid.host()) ? main : other).add(d);
-        if (main.isEmpty() && emptyHint) {
-            TextView none = text("None yet. Pair your " + platform().noun + " using the steps above.", 14, R.color.text3);
+        for (BluetoothDevice d : hid.pairedDevices()) {
+            if (d.equals(hid.host())) continue; // shown on its own, above the list
+            (DeviceKind.of(d).canHost ? main : other).add(d);
+        }
+        if (main.isEmpty() && emptyHint != null) {
+            TextView none = text(emptyHint, 14, R.color.text3);
             none.setPadding(0, px(12), 0, px(10));
             box.addView(none);
         }
@@ -713,11 +732,15 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     /** A round badge with the device's icon; green when it's the connected one. */
     private View deviceIcon(DeviceKind k, boolean on) {
+        return badge(k.icon, on ? R.color.green : k.canHost ? R.color.accent : R.color.text3);
+    }
+
+    private View badge(int iconRes, int tint) {
         FrameLayout badge = new FrameLayout(this);
         badge.setBackgroundResource(R.drawable.step_num);
         ImageView icon = new ImageView(this);
-        icon.setImageResource(k.icon);
-        icon.setImageTintList(ColorStateList.valueOf(getColor(on ? R.color.green : k.canHost ? R.color.accent : R.color.text3)));
+        icon.setImageResource(iconRes);
+        icon.setImageTintList(ColorStateList.valueOf(getColor(tint)));
         badge.addView(icon, new FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER));
         badge.setLayoutParams(new LinearLayout.LayoutParams(px(42), px(42)));
         return badge;
@@ -1038,6 +1061,17 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     // ------------------------------------------------------------ settings
 
+    private void openSheet(int mode) {
+        if (settingsOpen && mode == sheetMode) return;
+        if (mode != sheetMode) {
+            sheetMode = mode;
+            buildSettings();
+            if (settingsOpen) return; // already up: just swap what's on it
+            settingsSheet.setTranslationY(px(600)); // new content: its old height means nothing
+        }
+        setSettingsOpen(true);
+    }
+
     private void setSettingsOpen(boolean open) {
         if (open == settingsOpen) return;
         settingsOpen = open;
@@ -1138,31 +1172,18 @@ public class MainActivity extends Activity implements HidManager.Listener {
         hlp.bottomMargin = px(14);
         settingsContent.addView(handle, hlp);
 
-        TextView title = text("Settings", 22, R.color.text);
+        boolean devices = sheetMode == SHEET_DEVICES;
+        TextView title = text(devices ? "Devices" : "Settings", 22, R.color.text);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         settingsContent.addView(title);
-
-        // Connection row
-        LinearLayout conn = new LinearLayout(this);
-        conn.setGravity(Gravity.CENTER_VERTICAL);
-        conn.setPadding(0, px(14), 0, px(4));
-        settingsConnLabel = text("", 15, R.color.text2);
-        conn.addView(settingsConnLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        settingsConnBtn = smallButton("Disconnect");
-        settingsConnBtn.setOnClickListener(v -> { hid.disconnect(); setSettingsOpen(false); });
-        conn.addView(settingsConnBtn);
-        settingsContent.addView(conn);
-        settingsContent.addView(caption("PAIRED DEVICES"));
-        settingsDevices = new LinearLayout(this);
-        settingsDevices.setOrientation(LinearLayout.VERTICAL);
-        settingsContent.addView(settingsDevices);
-        TextView pairNew = text("+ Pair a new device", 15, R.color.accent);
-        pairNew.setPadding(0, px(10), 0, px(4));
-        pairNew.setOnClickListener(v -> { setSettingsOpen(false); findNearby(); });
-        settingsContent.addView(pairNew);
-
-        settingsContent.addView(caption("DEVICE"));
-        settingsContent.addView(deviceRow());
+        devicesBox = null;
+        if (devices) {
+            devicesBox = new LinearLayout(this);
+            devicesBox.setOrientation(LinearLayout.VERTICAL);
+            settingsContent.addView(devicesBox);
+            fillDevicesSheet();
+            return;
+        }
 
         settingsContent.addView(caption("APPEARANCE"));
         settingsContent.addView(themePicker());
@@ -1256,11 +1277,104 @@ public class MainActivity extends Activity implements HidManager.Listener {
         return t;
     }
 
-    private void renderSettingsConnection(boolean connected) {
-        if (settingsConnLabel == null) return;
-        settingsConnLabel.setText(connected ? "Connected to " + hid.hostName() : "Not connected");
-        settingsConnBtn.setVisibility(connected ? View.VISIBLE : View.GONE);
-        if (settingsDevices != null && hasPermissions()) fillDeviceRows(settingsDevices, false);
+    // ------------------------------------------------------------ devices sheet
+
+    /**
+     * What's connected now (with the device type its shortcuts are set up for), then every other
+     * paired device to switch to, then ways to pair a new one.
+     */
+    private void fillDevicesSheet() {
+        if (devicesBox == null) return;
+        devicesBox.removeAllViews();
+        boolean perms = hasPermissions();
+        BluetoothDevice host = perms ? hid.host() : null;
+        BluetoothDevice busy = perms && host == null ? hid.connectingDevice() : null;
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundResource(R.drawable.note_card);
+        card.setPadding(px(16), px(14), px(14), px(14));
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        BluetoothDevice now = host != null ? host : busy;
+        top.addView(deviceIcon(now != null ? DeviceKind.of(now) : DeviceKind.UNKNOWN, host != null));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(px(14), 0, px(10), 0);
+        TextView name = text(now != null ? HidManager.nameOf(now) : "Not connected", 17, R.color.text);
+        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        texts.addView(name);
+        texts.addView(text(host != null ? "Connected" : busy != null ? "Connecting…" : "Pick a device below, or pair a new one",
+                13, host != null ? R.color.green : busy != null ? R.color.amber : R.color.text3));
+        top.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (host != null) {
+            TextView off = smallButton("Disconnect");
+            off.setOnClickListener(v -> hid.disconnect());
+            top.addView(off);
+        }
+        card.addView(top);
+        View line = new View(this);
+        line.setBackgroundColor(getColor(R.color.stroke));
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, px(1)));
+        llp.topMargin = px(12);
+        llp.bottomMargin = px(4);
+        card.addView(line, llp);
+        card.addView(deviceRow());
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.topMargin = px(14);
+        devicesBox.addView(card, clp);
+
+        devicesBox.addView(caption(host != null ? "SWITCH TO" : "PAIRED DEVICES"));
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        if (perms) fillDeviceRows(list, host != null ? "No other devices paired yet." : "No devices paired yet.");
+        else list.addView(text("Allow Bluetooth to see your paired devices.", 14, R.color.text3));
+        devicesBox.addView(list);
+
+        devicesBox.addView(caption("ADD A DEVICE"));
+        TextView find = text("Find nearby devices", 16, android.R.color.white);
+        find.setBackgroundResource(R.drawable.btn_primary);
+        find.setGravity(Gravity.CENTER);
+        find.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        find.setOnClickListener(v -> { haptic(v); setSettingsOpen(false); findNearby(); });
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48));
+        flp.topMargin = px(8);
+        devicesBox.addView(find, flp);
+        TextView vis = text("Or make this phone visible", 15, R.color.text);
+        vis.setBackgroundResource(R.drawable.btn_secondary);
+        vis.setGravity(Gravity.CENTER);
+        vis.setOnClickListener(v -> { haptic(v); setSettingsOpen(false); makeVisible(); });
+        LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48));
+        vlp.topMargin = px(10);
+        devicesBox.addView(vis, vlp);
+        TextView tip = text("Computers: make this phone visible, then connect from the computer's Bluetooth settings. "
+                + "TVs: put the TV in pairing mode and find it from here.", 13, R.color.text3);
+        tip.setLineSpacing(0, 1.15f);
+        tip.setPadding(0, px(12), 0, px(6));
+        devicesBox.addView(tip);
+    }
+
+    /**
+     * Sets the shortcuts up for the device being connected: the type chosen for it before, or a
+     * good guess from its name ("MacBook Air" is a Mac), else whatever is chosen now. The result is
+     * remembered for that device, so switching between a Mac and a TV switches the keys too.
+     */
+    private void followTarget(BluetoothDevice d) {
+        if (d == null) { lastTargetAddr = null; return; }
+        String addr = d.getAddress();
+        if (addr.equals(lastTargetAddr)) return;
+        lastTargetAddr = addr;
+        int id = prefs.getInt("platform_" + addr, -1);
+        if (id < 0) id = Platform.guess(HidManager.nameOf(d), DeviceKind.of(d));
+        if (id < 0) id = settings.platform;
+        if (id < 0) return; // nothing chosen yet: the picker asks first
+        prefs.edit().putInt("platform_" + addr, id).apply();
+        if (id != settings.platform) {
+            applyPlatform(id);
+            Toast.makeText(this, "Set up for " + platform().name, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private View slider(String label, float value, FloatSetter setter) {
@@ -1334,15 +1448,14 @@ public class MainActivity extends Activity implements HidManager.Listener {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(0, px(8), 0, px(4));
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(p.icon);
-        icon.setImageTintList(ColorStateList.valueOf(getColor(R.color.accent)));
-        row.addView(icon, new LinearLayout.LayoutParams(px(28), px(28)));
+        row.addView(badge(p.icon, R.color.accent));
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         texts.setPadding(px(14), 0, px(12), 0);
-        texts.addView(text(p.name, 16, R.color.text));
-        texts.addView(text("Shortcuts, gestures and keys are set up for it", 13, R.color.text3));
+        TextView name = text("", 16, R.color.text);
+        name.setText(Html.fromHtml("Set up for <b>" + Html.escapeHtml(p.name) + "</b>", Html.FROM_HTML_MODE_COMPACT));
+        texts.addView(name);
+        texts.addView(text("Shortcuts and gestures", 13, R.color.text3));
         row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         TextView change = smallButton("Change");
         change.setOnClickListener(v -> { setSettingsOpen(false); showPicker(); });
@@ -1371,7 +1484,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         TextView title = text("What are you connecting to?", 26, R.color.text);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         col.addView(title);
-        TextView sub = text("Glide Pad sets up the right shortcuts, gestures and keys for it. You can change this any time in Settings.", 15, R.color.text2);
+        TextView sub = text("Glide Pad sets up the right shortcuts, gestures and keys for it. You can change it any time from the connection bar at the top.", 15, R.color.text2);
         sub.setLineSpacing(0, 1.15f);
         sub.setPadding(0, px(8), 0, px(20));
         col.addView(sub);
@@ -1449,13 +1562,19 @@ public class MainActivity extends Activity implements HidManager.Listener {
     }
 
     private void choosePlatform(int id) {
+        BluetoothDevice d = hid.host() != null ? hid.host() : hid.connectingDevice();
+        if (d != null && hasPermissions()) prefs.edit().putInt("platform_" + d.getAddress(), id).apply();
+        applyPlatform(id);
+        hidePicker();
+    }
+
+    private void applyPlatform(int id) {
         settings.platform = id;
         settings.save(prefs);
         buildKeyRow();
         buildShortcuts();
         buildSettings();
         render();
-        hidePicker();
     }
 
     private void hidePicker() {
