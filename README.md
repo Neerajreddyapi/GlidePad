@@ -4,6 +4,7 @@
 
 [![Build](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml/badge.svg)](https://github.com/Neerajreddyapi/GlidePad/actions/workflows/build.yml)
 [![Google Play](https://img.shields.io/badge/Google_Play-closed_testing-414141?logo=googleplay)](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad)
+[![Google Play downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fglidepad.vercel.app%2Fapi%2Fdownloads%3Fbadge%3Dplay&cacheSeconds=3600)](https://play.google.com/store/apps/details?id=com.neerajreddy.glidepad)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Android 9+](https://img.shields.io/badge/Android-9%2B-3DDC84)
 
