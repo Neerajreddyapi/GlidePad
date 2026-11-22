@@ -48,3 +48,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+dependencies {
+    // Google Play in-app updates: the "Update available" prompt and Settings > Updates.
+    implementation("com.google.android.play:app-update:2.1.0")
+}

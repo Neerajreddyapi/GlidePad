@@ -11,6 +11,7 @@ final class Settings {
     float pointerSpeed = 1f, scrollSpeed = 1f;
     boolean tapToClick = true, reverseScroll, momentum = true, clickButtons, haptics = true;
     boolean landscape;
+    boolean autoUpdate; // install Play updates as soon as the app finds one
     int scrollLines = 1; // lines the computer scrolls per scroll step
     int platform = -1;   // what we're connected to (Platform.MAC…); -1 = not chosen yet
 
@@ -25,6 +26,7 @@ final class Settings {
         s.clickButtons = p.getBoolean("clickButtons", false);
         s.haptics = p.getBoolean("haptics", true);
         s.landscape = p.getBoolean("landscape", false);
+        s.autoUpdate = p.getBoolean("autoUpdate", false);
         s.scrollLines = p.getInt("scrollLines", 1);
         s.platform = p.getInt("platform", -1);
         return s;
@@ -41,6 +43,7 @@ final class Settings {
                 .putBoolean("clickButtons", clickButtons)
                 .putBoolean("haptics", haptics)
                 .putBoolean("landscape", landscape)
+                .putBoolean("autoUpdate", autoUpdate)
                 .putInt("scrollLines", scrollLines)
                 .putInt("platform", platform)
                 .apply();

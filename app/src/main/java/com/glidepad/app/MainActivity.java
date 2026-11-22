@@ -55,6 +55,9 @@ public class MainActivity extends Activity implements HidManager.Listener {
 
     private HidManager hid;
     private Settings settings;
+    private Updates updates;
+    private String updateState = "checking";
+    private TextView updateStatus;
     private SharedPreferences prefs;
     private float dp;
 
@@ -220,10 +223,99 @@ public class MainActivity extends Activity implements HidManager.Listener {
             prefs.edit().putBoolean("askedNotifications", true).apply();
         }
         if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), REQ_PERMISSIONS);
+
+        // Ask Google Play for a newer version shortly after opening.
+        updates = new Updates(this);
+        content.postDelayed(() -> updates.check(this::onUpdateState), 1200);
+    }
+
+    // ------------------------------------------------------------ updates
+
+    /** Play answered: show it in Settings, and offer (or with Auto-update, start) the update. */
+    private void onUpdateState(String state) {
+        updateState = state;
+        if (updateStatus != null) updateStatus.setText(updateStatusText());
+        if (!Updates.AVAILABLE.equals(state)) return;
+        if (settings.autoUpdate) updates.start();
+        else if (picker == null && visPopup == null && scanPopup == null) showUpdatePopup();
+    }
+
+    private String updateStatusText() {
+        switch (updateState) {
+            case Updates.AVAILABLE: return "A new version is ready to install.";
+            case Updates.NONE: return "You're on the latest version.";
+            case "checking": return "Checking for updates\u2026";
+            default: return "Couldn't check Google Play right now.";
+        }
+    }
+
+    /** "Update available" card with Update / Later, in the same slot as the visibility popup. */
+    private void showUpdatePopup() {
+        FrameLayout root = findViewById(R.id.root);
+        visPopup = new FrameLayout(this);
+        visPopup.setBackgroundColor(getColor(R.color.scrim));
+        visPopup.setClickable(true);
+        visPopup.setOnClickListener(v -> hideVisibilityPopup());
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        card.setBackgroundResource(R.drawable.popup_card);
+        card.setPadding(px(24), px(26), px(24), px(20));
+        card.setClickable(true);
+        card.setElevation(px(12));
+        TextView t = text("Update available", 21, R.color.text);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, 0, 0, px(8));
+        card.addView(t);
+        TextView b = text("A new version of Glide Pad is ready on Google Play.", 15, R.color.text2);
+        b.setGravity(Gravity.CENTER);
+        b.setLineSpacing(0, 1.2f);
+        card.addView(b);
+        TextView go = text("Update", 16, android.R.color.white);
+        go.setBackgroundResource(R.drawable.btn_primary);
+        go.setGravity(Gravity.CENTER);
+        go.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        go.setOnClickListener(v -> { haptic(v); hideVisibilityPopup(); updates.start(); });
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(50));
+        glp.topMargin = px(22);
+        card.addView(go, glp);
+        TextView later = text("Later", 15, R.color.text2);
+        later.setGravity(Gravity.CENTER);
+        later.setPadding(0, px(14), 0, px(6));
+        later.setOnClickListener(v -> hideVisibilityPopup());
+        card.addView(later, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        int width = Math.min(px(380), getResources().getDisplayMetrics().widthPixels - px(40));
+        visPopup.addView(card, new FrameLayout.LayoutParams(width, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        root.addView(visPopup, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        visPopup.setAlpha(0f);
+        visPopup.animate().alpha(1f).setDuration(160).start();
+        updateBackHandling();
+    }
+
+    /** Settings > Updates: status, Update from Play Store, Auto-update, and the installed version. */
+    private void addUpdatesSection() {
+        settingsContent.addView(caption("UPDATES"));
+        updateStatus = text(updateStatusText(), 14, R.color.text2);
+        updateStatus.setPadding(0, px(6), 0, px(10));
+        settingsContent.addView(updateStatus);
+        TextView go = text("Update from Play Store", 16, android.R.color.white);
+        go.setBackgroundResource(R.drawable.btn_primary);
+        go.setGravity(Gravity.CENTER);
+        go.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        go.setOnClickListener(v -> { haptic(v); if (updates != null) updates.start(); });
+        settingsContent.addView(go, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(50)));
+        settingsContent.addView(toggle("Auto-update", "Install new versions as soon as you open the app.",
+                settings.autoUpdate, v -> settings.autoUpdate = v));
+        TextView version = text("Version " + Updates.version(this), 13, R.color.text3);
+        version.setGravity(Gravity.CENTER);
+        version.setPadding(0, px(4), 0, 0);
+        settingsContent.addView(version);
     }
 
     @Override protected void onStart() {
         super.onStart();
+        if (updates != null) updates.resume(); // finish an update that was started earlier
         hid.addListener(this);
         if (hasPermissions()) { // also covers permission granted later from system settings
             hid.start();
@@ -1177,6 +1269,7 @@ public class MainActivity extends Activity implements HidManager.Listener {
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         settingsContent.addView(title);
         devicesBox = null;
+        updateStatus = null;
         if (devices) {
             devicesBox = new LinearLayout(this);
             devicesBox.setOrientation(LinearLayout.VERTICAL);
@@ -1247,6 +1340,8 @@ public class MainActivity extends Activity implements HidManager.Listener {
         nlp.topMargin = px(12);
         nlp.bottomMargin = px(6);
         settingsContent.addView(note, nlp);
+
+        addUpdatesSection();
 
         // Footer: links + credit (same as Chroma Flow)
         LinearLayout links = new LinearLayout(this);
